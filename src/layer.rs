@@ -1,5 +1,4 @@
 use crate::activation::ActivationType;
-use rand::random;
 
 /// Represents a layer in the neural network
 #[derive(Debug, Clone)]
@@ -96,11 +95,11 @@ impl Layer {
             WeightInitStrategy::Random => {
                 // Random initialization between -1 and 1
                 self.weights = (0..self.weights.len())
-                    .map(|_| random::<f32>() * 2.0 - 1.0)
+                    .map(|_| fastrand::f32() * 2.0 - 1.0)
                     .collect();
                 
                 self.biases = (0..self.biases.len())
-                    .map(|_| random::<f32>() * 2.0 - 1.0)
+                    .map(|_| fastrand::f32() * 2.0 - 1.0)
                     .collect();
             },
             WeightInitStrategy::Xavier => {
@@ -108,7 +107,7 @@ impl Layer {
                 let scale = (6.0 / (self.inputs as f32 + self.neurons as f32)).sqrt();
                 
                 self.weights = (0..self.weights.len())
-                    .map(|_| (random::<f32>() * 2.0 - 1.0) * scale)
+                    .map(|_| (fastrand::f32() * 2.0 - 1.0) * scale)
                     .collect();
                 
                 self.biases = vec![0.0; self.neurons]; // Biases typically initialized to zero
@@ -118,7 +117,7 @@ impl Layer {
                 let std_dev = (2.0 / self.inputs as f32).sqrt();
                 
                 self.weights = (0..self.weights.len())
-                    .map(|_| random::<f32>() * std_dev)
+                    .map(|_| fastrand::f32() * std_dev)
                     .collect();
                 
                 self.biases = vec![0.0; self.neurons];
