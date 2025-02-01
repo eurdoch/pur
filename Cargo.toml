@@ -5,3 +5,6 @@ edition = "2021"
 
 [dependencies]
 rand = "0.8.5"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin)'] }
