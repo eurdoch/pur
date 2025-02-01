@@ -109,7 +109,7 @@ impl Model {
     /// # Returns
     ///
     /// Final layer output after propagating through all layers
-    pub fn inference(&self, mut input: Vec<f64>) -> Vec<f64> {
+    pub fn inference(&self, input: &Vec<f64>) -> Vec<f64> {
         // Validate input size matches first layer's input size
         if input.len() != self.layers[0].inputs {
             panic!(
@@ -120,13 +120,14 @@ impl Model {
         }
 
         // Propagate through each layer
+        let mut output = input.clone();
         for layer in &self.layers {
             // Compute layer's output based on current input
-            input = layer.forward_propagate(&input);
+            output = layer.forward_propagate(&output);
         }
 
         // Return final layer output
-        input
+        output
     }
 
     /// Perform a forward pass through the network and return all activations
@@ -226,15 +227,15 @@ impl Model {
     }
 
     /// Train the model for one iteration using a single data point
-    pub fn train(&mut self, input: Vec<f64>, target: Vec<f64>, learning_rate: f64) -> f64 {
+    pub fn train(&mut self, input: &Vec<f64>, target: &Vec<f64>, learning_rate: f64) -> f64 {
         // Forward pass to get activations
-        let activations = self.forward(input);
+        let activations = self.forward(input.to_vec());
 
         // Compute loss
-        let loss = self.compute_loss(activations.last().unwrap(), &target);
+        let loss = self.compute_loss(activations.last().unwrap(), target);
 
         // Backward pass to compute gradients
-        let (weight_grads, bias_grads) = self.backward(activations, target);
+        let (weight_grads, bias_grads) = self.backward(activations, target.to_vec());
 
         // Update weights using computed gradients
         self.update_weights(weight_grads, bias_grads, learning_rate);
@@ -242,3 +243,4 @@ impl Model {
         loss
     }
 }
+
