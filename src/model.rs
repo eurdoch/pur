@@ -94,6 +94,103 @@ impl Model {
         // Return final layer output
         input
     }
+
+    /// Perform a forward pass through the network and return all activations
+    pub fn forward(&self, input: Vec<f64>) -> Vec<Vec<f64>> {
+        // Placate all layer outputs
+        let mut activations = vec![input];
+        
+        for layer in &self.layers {
+            let output = layer.forward_propagate(activations.last().unwrap());
+            activations.push(output);
+        }
+
+        activations
+    }
+
+    /// Compute Mean Squared Error loss
+    fn compute_loss(&self, predicted: &[f64], target: &[f64]) -> f64 {
+        predicted.iter()
+            .zip(target.iter())
+            .map(|(p, t)| (p - t).powi(2))
+            .sum::<f64>() / predicted.len() as f64
+    }
+
+    /// Perform backward pass and return weight and bias gradients
+    fn backward(&self, activations: Vec<Vec<f64>>, target: Vec<f64>) -> (Vec<Vec<f64>>, Vec<Vec<f64>>) {
+        // Initialize gradient storage with the correct sizes for each layer
+        let mut weight_grads = self.layers.iter()
+            .map(|layer| vec![0.0; layer.weights.len()])
+            .collect::<Vec<_>>();
+        let mut bias_grads = self.layers.iter()
+            .map(|layer| vec![0.0; layer.biases.len()])
+            .collect::<Vec<_>>();
+
+        // Compute error for output layer
+        let mut errors = activations.last().unwrap().iter()
+            .zip(target.iter())
+            .map(|(a, t)| a - t)
+            .collect::<Vec<f64>>();
+
+        for (i, layer) in self.layers.iter().enumerate().rev() {
+            // Compute gradients for weights and biases
+            let activation_derivatives: Vec<f64> = activations[i + 1].iter()
+                .map(|&x| layer.activation.derivative(x as f32) as f64)
+                .collect();
+            
+            for (neuron_idx, &error) in errors.iter().enumerate() {
+                for (input_idx, &prev_activation) in activations[i].iter().enumerate() {
+                    weight_grads[i][neuron_idx * layer.inputs + input_idx] += error * activation_derivatives[neuron_idx] * prev_activation;
+                }
+                bias_grads[i][neuron_idx] += error * activation_derivatives[neuron_idx];
+            }
+
+            // Propagate error to previous layer
+            if i > 0 {
+                let mut new_errors = vec![0.0; layer.inputs];
+                
+                for (neuron_idx, &error) in errors.iter().enumerate() {
+                    for (input_idx, _) in activations[i].iter().enumerate() {
+                        new_errors[input_idx] += layer.weights[neuron_idx * layer.inputs + input_idx] as f64 * error;
+                    }
+                }
+
+                errors = new_errors;
+            }
+        }
+
+        (weight_grads, bias_grads)
+    }
+
+    /// Update model weights based on computed gradients
+    fn update_weights(&mut self, weight_grads: Vec<Vec<f64>>, bias_grads: Vec<Vec<f64>>, learning_rate: f64) {
+        for (i, layer) in self.layers.iter_mut().enumerate() {
+            for j in 0..layer.weights.len() {
+                layer.weights[j] -= (weight_grads[i][j] * learning_rate) as f32;
+            }
+
+            for j in 0..layer.biases.len() {
+                layer.biases[j] -= (bias_grads[i][j] * learning_rate) as f32;
+            }
+        }
+    }
+
+    /// Train the model for one iteration using a single data point
+    pub fn train(&mut self, input: Vec<f64>, target: Vec<f64>, learning_rate: f64) -> f64 {
+        // Forward pass to get activations
+        let activations = self.forward(input);
+
+        // Compute loss
+        let loss = self.compute_loss(activations.last().unwrap(), &target);
+
+        // Backward pass to compute gradients
+        let (weight_grads, bias_grads) = self.backward(activations, target);
+
+        // Update weights using computed gradients
+        self.update_weights(weight_grads, bias_grads, learning_rate);
+
+        loss
+    }
 }
 
 #[cfg(test)]
