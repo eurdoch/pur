@@ -68,7 +68,7 @@ fn test_inference() {
 
     // Test inference with a valid input
     let input = vec![1.0, 2.0];
-    let output = model.inference(input.clone());
+    let output = model.inference(&input);
 
     // Verify output size matches the last layer's neuron count
     assert_eq!(output.len(), 1);
@@ -90,7 +90,7 @@ fn test_inference_invalid_input_size() {
 
     // Try to run inference with incorrect input size
     let invalid_input = vec![1.0, 2.0, 3.0];
-    model.inference(invalid_input);
+    model.inference(&invalid_input);
 }
 
 #[test]
@@ -159,7 +159,7 @@ fn test_training_basic() {
     let learning_rate = 0.01;
 
     // Perform training and check loss
-    let loss = model.train(input, target, learning_rate);
+    let loss = model.train(&input, &target, learning_rate);
 
     // Loss should be a finite number between 0 and some reasonable upper bound
     assert!(loss.is_finite());
