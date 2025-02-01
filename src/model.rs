@@ -53,6 +53,7 @@ impl Model {
     }
     
     /// Pretty print the weights of all layers
+    #[cfg(not(tarpaulin))]
     pub fn print_weights(&self) {
         for (layer_idx, layer) in self.layers.iter().enumerate() {
             println!("Layer {} Weights ({}x{}):", layer_idx, layer.inputs, layer.biases.len());
