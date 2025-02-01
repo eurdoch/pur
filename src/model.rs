@@ -52,6 +52,40 @@ impl Model {
         }
     }
     
+    /// Pretty print the weights of all layers
+    pub fn print_weights(&self) {
+        for (layer_idx, layer) in self.layers.iter().enumerate() {
+            println!("Layer {} Weights ({}x{}):", layer_idx, layer.inputs, layer.biases.len());
+            
+            // Print each row of weights for the layer
+            for neuron_idx in 0..layer.biases.len() {
+                // Get the weights for this neuron
+                let start_idx = neuron_idx * layer.inputs;
+                let end_idx = start_idx + layer.inputs;
+                let neuron_weights = &layer.weights[start_idx..end_idx];
+                
+                println!("  Neuron {}: [{}]", 
+                    neuron_idx, 
+                    neuron_weights
+                        .iter()
+                        .map(|w| format!("{:.4}", w))
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                );
+            }
+            
+            println!("Layer {} Biases:", layer_idx);
+            println!("  [{}]", 
+                layer.biases
+                    .iter()
+                    .map(|b| format!("{:.4}", b))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            );
+            println!(); // Add an empty line between layers
+        }
+    }
+    
     /// Get total number of parameters in the model
     pub fn parameter_count(&self) -> usize {
         self.layers.iter()
