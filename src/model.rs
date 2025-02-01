@@ -87,6 +87,24 @@ impl Model {
         }
     }
     
+    /// Pretty print the structure of the model without weights
+    #[cfg(not(tarpaulin))]
+    pub fn print_model(&self) {
+        println!("Model Structure:");
+        println!("Total Layers: {}", self.layers.len());
+        
+        for (layer_idx, layer) in self.layers.iter().enumerate() {
+            println!("Layer {}: ", layer_idx);
+            println!("  - Inputs: {}", layer.inputs);
+            println!("  - Neurons: {}", layer.biases.len());
+            println!("  - Activation: {:?}", layer.activation);
+        }
+        
+        println!("\nModel Hyperparameters:");
+        println!("  - Learning Rate: {}", self.hyperparameters.learning_rate);
+        // Add any other hyperparameters you want to display
+    }
+    
     /// Get total number of parameters in the model
     pub fn parameter_count(&self) -> usize {
         self.layers.iter()
@@ -244,4 +262,3 @@ impl Model {
         loss
     }
 }
-
