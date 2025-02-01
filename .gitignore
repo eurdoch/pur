@@ -3,3 +3,5 @@
 # pprog config
 pprog.toml
 
+# tarpaulin
+build_rs_cov.profraw
