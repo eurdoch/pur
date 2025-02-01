@@ -196,6 +196,7 @@ impl Model {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::f64;
 
     #[test]
     fn test_parameter_count_accuracy() {
@@ -284,5 +285,102 @@ mod tests {
         // Try to run inference with incorrect input size
         let invalid_input = vec![1.0, 2.0, 3.0];
         model.inference(invalid_input);
+    }
+
+    #[test]
+    fn test_forward_pass() {
+        // Create a multi-layer model for detailed forward pass testing
+        let model = Model::new(
+            &[(3, 4), (4, 2)], 
+            ActivationType::ReLU, 
+            WeightInitStrategy::Xavier
+        );
+
+        // Test input
+        let input = vec![1.0, 2.0, 3.0];
+        let activations = model.forward(input);
+
+        // Verify activations structure
+        assert_eq!(activations.len(), 3);  // Input + 2 layers
+        
+        // Check first layer (input layer)
+        assert_eq!(activations[0], vec![1.0, 2.0, 3.0]);
+        
+        // Verify sizes of layer activations
+        assert_eq!(activations[1].len(), 4);  // First layer neurons
+        assert_eq!(activations[2].len(), 2);  // Output layer neurons
+    }
+
+    #[test]
+    fn test_reinitialize_weights() {
+        let mut model = Model::new(
+            &[(3, 4), (4, 2)], 
+            ActivationType::ReLU, 
+            WeightInitStrategy::Random
+        );
+
+        // Store initial weights
+        let initial_weights: Vec<Vec<f32>> = model.layers.iter()
+            .map(|layer| layer.weights.clone())
+            .collect();
+
+        // Reinitialize with a different strategy
+        model.reinitialize_weights(WeightInitStrategy::Xavier);
+
+        // Check that weights have changed
+        for (i, layer) in model.layers.iter().enumerate() {
+            assert_ne!(
+                layer.weights, 
+                initial_weights[i], 
+                "Weights for layer {} should be different after reinitialization", 
+                i
+            );
+        }
+    }
+
+    #[test]
+    fn test_training_basic() {
+        // Create a simple model for training test
+        let mut model = Model::new(
+            &[(2, 3), (3, 1)], 
+            ActivationType::ReLU, 
+            WeightInitStrategy::Xavier
+        );
+
+        // Simple training scenario with a fixed input and target
+        let input = vec![0.5, 1.5];
+        let target = vec![1.0];
+        let learning_rate = 0.01;
+
+        // Perform training and check loss
+        let loss = model.train(input, target, learning_rate);
+
+        // Loss should be a finite number between 0 and some reasonable upper bound
+        assert!(loss.is_finite());
+        assert!(loss >= 0.0);
+        // We don't check for a specific loss value as it depends on initialization
+    }
+
+    #[test]
+    fn test_compute_loss() {
+        let model = Model::new(
+            &[(2, 3), (3, 1)], 
+            ActivationType::ReLU, 
+            WeightInitStrategy::Xavier
+        );
+
+        // Test cases for loss computation
+        let test_cases = vec![
+            (vec![1.0], vec![1.0], 0.0),  // Perfect prediction
+            (vec![0.5], vec![1.0], 0.25),  // Moderate error
+            (vec![0.0], vec![1.0], 1.0),  // Large error
+        ];
+
+        for (predicted, target, expected_loss) in test_cases {
+            let computed_loss = model.compute_loss(&predicted, &target);
+            assert!((computed_loss - expected_loss).abs() < 1e-6, 
+                "Loss computation failed. Got {}, expected {}", 
+                computed_loss, expected_loss);
+        }
     }
 }
