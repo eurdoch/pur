@@ -5,6 +5,7 @@ pub enum ActivationType {
     ReLU,
     Tanh,
     Linear,
+    Softmax,
 }
 
 impl ActivationType {
@@ -15,6 +16,7 @@ impl ActivationType {
             ActivationType::ReLU => x.max(0.0),
             ActivationType::Tanh => x.tanh(),
             ActivationType::Linear => x,
+            ActivationType::Softmax => x, // Note: Softmax is applied on the whole vector in Layer
         }
     }
 
@@ -28,6 +30,7 @@ impl ActivationType {
             ActivationType::ReLU => if x > 0.0 { 1.0 } else { 0.0 },
             ActivationType::Tanh => 1.0 - x.tanh().powi(2),
             ActivationType::Linear => 1.0,
+            ActivationType::Softmax => 1.0, // Note: Derivative handled specially in Layer for Softmax
         }
     }
 }

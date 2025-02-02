@@ -77,16 +77,29 @@ impl Layer {
             // Add bias
             neuron_output += self.biases[neuron] as f64;
             
-            // Apply activation function
-            output[neuron] = match self.activation {
-                ActivationType::ReLU => neuron_output.max(0.0),
-                ActivationType::Sigmoid => 1.0 / (1.0 + (-neuron_output).exp()),
-                ActivationType::Tanh => neuron_output.tanh(),
-                ActivationType::Linear => neuron_output, // Linear means no transformation
-            };
+            // Store the raw output
+            output[neuron] = neuron_output;
         }
         
-        output
+        // Apply activation function
+        match self.activation {
+            ActivationType::Softmax => {
+                // Softmax requires processing the entire vector
+                let max_val = output.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+                let exp_values: Vec<f64> = output.iter()
+                    .map(|&x| (x - max_val).exp())
+                    .collect();
+                let sum_exp = exp_values.iter().sum::<f64>();
+                
+                exp_values.iter()
+                    .map(|&x| x / sum_exp)
+                    .collect()
+            },
+            ActivationType::ReLU => output.iter().map(|&x| x.max(0.0)).collect(),
+            ActivationType::Sigmoid => output.iter().map(|&x| 1.0 / (1.0 + (-x).exp())).collect(),
+            ActivationType::Tanh => output.iter().map(|&x| x.tanh()).collect(),
+            ActivationType::Linear => output,
+        }
     }
     
     /// Initialize weights using a specific strategy

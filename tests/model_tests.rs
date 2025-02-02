@@ -31,7 +31,8 @@ fn test_parameter_count_accuracy() {
         let model = Model::new(
             &layer_configs, 
             ActivationType::ReLU, 
-            weight_init
+            weight_init,
+            false
         );
         
         // Detailed parameter breakdown
@@ -63,7 +64,8 @@ fn test_inference() {
     let model = Model::new(
         &[(2, 3), (3, 1)], 
         ActivationType::ReLU, 
-        WeightInitStrategy::Xavier
+        WeightInitStrategy::Xavier,
+        false
     );
 
     // Test inference with a valid input
@@ -85,7 +87,8 @@ fn test_inference_invalid_input_size() {
     let model = Model::new(
         &[(2, 3), (3, 1)], 
         ActivationType::ReLU, 
-        WeightInitStrategy::Xavier
+        WeightInitStrategy::Xavier,
+        false
     );
 
     // Try to run inference with incorrect input size
@@ -99,7 +102,8 @@ fn test_forward_pass() {
     let model = Model::new(
         &[(3, 4), (4, 2)], 
         ActivationType::ReLU, 
-        WeightInitStrategy::Xavier
+        WeightInitStrategy::Xavier,
+        false
     );
 
     // Test input
@@ -122,7 +126,8 @@ fn test_reinitialize_weights() {
     let mut model = Model::new(
         &[(3, 4), (4, 2)], 
         ActivationType::ReLU, 
-        WeightInitStrategy::Random
+        WeightInitStrategy::Random,
+        false
     );
 
     // Store initial weights
@@ -150,7 +155,8 @@ fn test_training_basic() {
     let mut model = Model::new(
         &[(2, 3), (3, 1)], 
         ActivationType::ReLU, 
-        WeightInitStrategy::Xavier
+        WeightInitStrategy::Xavier,
+        false
     );
 
     // Simple training scenario with a fixed input and target
@@ -172,7 +178,8 @@ fn test_compute_loss() {
     let model = Model::new(
         &[(2, 3), (3, 1)], 
         ActivationType::ReLU, 
-        WeightInitStrategy::Xavier
+        WeightInitStrategy::Xavier,
+        false
     );
 
     // Test cases for loss computation
