@@ -115,7 +115,7 @@ impl Model {
 
     /// Perform a forward pass through the network and return all activations
     pub fn forward(&self, input: Vec<f64>) -> Vec<Vec<f64>> {
-        // Placate all layer outputs
+        // Store all layer outputs
         let mut activations = vec![input];
         
         for layer in &self.layers {
@@ -128,7 +128,6 @@ impl Model {
 
     /// Compute cross-entropy loss
     fn compute_loss(&self, predicted: &[f64], target: &[f64]) -> f64 {
-        // [Previous implementation remains the same]
         if self.softmax_last_layer {
             // Ensure that targets are one-hot encoded (one 1.0, rest 0.0)
             let mut total_loss = 0.0;
@@ -164,7 +163,6 @@ impl Model {
 
     /// Perform backward pass and return weight and bias gradients
     fn backward(&self, activations: Vec<Vec<f64>>, target: Vec<f64>) -> (Vec<Vec<f64>>, Vec<Vec<f64>>) {
-        // [Previous implementation remains the same]
         let mut weight_grads = self.layers.iter()
             .map(|layer| vec![0.0; layer.weights.len()])
             .collect::<Vec<_>>();
@@ -231,20 +229,76 @@ impl Model {
         }
     }
 
-    /// Train the model for one iteration using a single data point
+    /// Train the model using mini-batch gradient descent
+    /// 
+    /// # Arguments
+    /// 
+    /// * `inputs` - Vector of input samples, where each sample is a vector of features
+    /// * `targets` - Vector of target values, where each target corresponds to an input
+    /// * `batch_size` - Size of mini-batches for gradient descent
+    /// * `learning_rate` - Learning rate for weight updates
+    /// 
+    /// # Returns
+    /// 
+    /// Average loss across all samples in the batch
+    pub fn train_batch(
+        &mut self,
+        inputs: &[Vec<f64>],
+        targets: &[Vec<f64>],
+        batch_size: usize,
+        learning_rate: f64
+    ) -> f64 {
+        assert_eq!(inputs.len(), targets.len(), "Number of inputs must match number of targets");
+        assert!(batch_size > 0, "Batch size must be greater than 0");
+
+        let mut total_loss = 0.0;
+        let mut batch_weight_grads = self.layers.iter()
+            .map(|layer| vec![0.0; layer.weights.len()])
+            .collect::<Vec<_>>();
+        let mut batch_bias_grads = self.layers.iter()
+            .map(|layer| vec![0.0; layer.biases.len()])
+            .collect::<Vec<_>>();
+
+        // Process each sample in the batch
+        for (input, target) in inputs.iter().zip(targets.iter()).take(batch_size) {
+            // Forward pass
+            let activations = self.forward(input.clone());
+            
+            // Compute loss
+            let loss = self.compute_loss(activations.last().unwrap(), target);
+            total_loss += loss;
+
+            // Backward pass
+            let (weight_grads, bias_grads) = self.backward(activations, target.clone());
+
+            // Accumulate gradients
+            for i in 0..self.layers.len() {
+                for j in 0..batch_weight_grads[i].len() {
+                    batch_weight_grads[i][j] += weight_grads[i][j];
+                }
+                for j in 0..batch_bias_grads[i].len() {
+                    batch_bias_grads[i][j] += bias_grads[i][j];
+                }
+            }
+        }
+
+        // Average gradients over batch
+        let batch_size_f64 = batch_size as f64;
+        for grads in batch_weight_grads.iter_mut().chain(batch_bias_grads.iter_mut()) {
+            for grad in grads.iter_mut() {
+                *grad /= batch_size_f64;
+            }
+        }
+
+        // Update weights using averaged gradients
+        self.update_weights(batch_weight_grads, batch_bias_grads, learning_rate);
+
+        // Return average loss
+        total_loss / batch_size_f64
+    }
+
+    /// Train the model for one iteration using a single data point (kept for backward compatibility)
     pub fn train(&mut self, input: &Vec<f64>, target: &Vec<f64>, learning_rate: f64) -> f64 {
-        // Forward pass to get activations
-        let activations = self.forward(input.to_vec());
-
-        // Compute loss
-        let loss = self.compute_loss(activations.last().unwrap(), target);
-
-        // Backward pass to compute gradients
-        let (weight_grads, bias_grads) = self.backward(activations, target.to_vec());
-
-        // Update weights using computed gradients
-        self.update_weights(weight_grads, bias_grads, learning_rate);
-
-        loss
+        self.train_batch(&[input.clone()], &[target.clone()], 1, learning_rate)
     }
 }
