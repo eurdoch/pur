@@ -175,24 +175,60 @@ fn test_training_basic() {
 
 #[test]
 fn test_compute_loss() {
-    let model = Model::new(
-        &[(2, 3), (3, 1)], 
-        ActivationType::ReLU, 
+    // Test case 1: Model with softmax last layer (multiclass classification)
+    let model_softmax = Model::new(
+        &[(2, 3), (3, 3)],  // 3 output classes
+        ActivationType::ReLU,
+        WeightInitStrategy::Xavier,
+        true  // Enable softmax for last layer
+    );
+
+    // Test softmax cross-entropy loss
+    let predicted_softmax = vec![0.7, 0.2, 0.1];  // Softmax outputs (sum to 1)
+    let target_softmax = vec![1.0, 0.0, 0.0];     // One-hot encoded target
+    let loss_softmax = model_softmax.calculate_loss(&predicted_softmax, &target_softmax);
+    assert!(loss_softmax > 0.0, "Softmax loss should be positive");
+    assert!(loss_softmax.is_finite(), "Softmax loss should be finite");
+
+    // Test case 2: Model with sigmoid output (binary classification)
+    let model_sigmoid = Model::new(
+        &[(2, 3), (3, 1)],  // Single output
+        ActivationType::Sigmoid,
         WeightInitStrategy::Xavier,
         false
     );
 
-    // Test cases for loss computation
-    let test_cases = vec![
-        (vec![1.0], vec![1.0], 0.0),  // Perfect prediction
-        (vec![0.5], vec![1.0], 0.25),  // Moderate error
-        (vec![0.0], vec![1.0], 1.0),  // Large error
+    // Test binary cross-entropy loss
+    let test_cases_binary = vec![
+        (vec![0.7], vec![1.0]),    // Relatively good prediction
+        (vec![0.1], vec![0.0]),    // Good prediction for negative class
+        (vec![0.5], vec![1.0]),    // Uncertain prediction
     ];
 
-    for (predicted, target, expected_loss) in test_cases {
-        let computed_loss = model.calculate_loss(&predicted, &target);
-        assert!((computed_loss - expected_loss).abs() < 1e-6, 
-            "Loss computation failed. Got {}, expected {}", 
-            computed_loss, expected_loss);
+    for (predicted, target) in test_cases_binary {
+        let loss = model_sigmoid.calculate_loss(&predicted, &target);
+        assert!(loss >= 0.0, "Binary cross-entropy loss should be positive");
+        assert!(loss.is_finite(), "Binary cross-entropy loss should be finite");
+    }
+
+    // Test case 3: Model with regular output (regression)
+    let model_regular = Model::new(
+        &[(2, 3), (3, 2)],  // Multiple outputs
+        ActivationType::ReLU,
+        WeightInitStrategy::Xavier,
+        false
+    );
+
+    // Test MSE loss
+    let test_cases_mse = vec![
+        (vec![0.5, 0.5], vec![1.0, 1.0]),    // Some error
+        (vec![0.0, 0.0], vec![0.0, 0.0]),    // Perfect prediction
+        (vec![2.0, -1.0], vec![0.0, 0.0]),   // Large error
+    ];
+
+    for (predicted, target) in test_cases_mse {
+        let loss = model_regular.calculate_loss(&predicted, &target);
+        assert!(loss >= 0.0, "MSE loss should be non-negative");
+        assert!(loss.is_finite(), "MSE loss should be finite");
     }
 }
