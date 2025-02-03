@@ -1,21 +1,14 @@
 use crate::activation::ActivationType;
+use ndarray::{Array1, Array2};
+use rand_distr::{Normal, Distribution};
 
 /// Represents a layer in the neural network
 #[derive(Debug, Clone)]
 pub struct Layer {
-    /// Number of neurons in the layer
     pub neurons: usize,
-    
-    /// Number of inputs to this layer
     pub inputs: usize,
-    
-    /// Weights of connections between neurons
-    pub weights: Vec<f32>,
-    
-    /// Bias values for neurons
-    pub biases: Vec<f32>,
-    
-    /// Activation function type for the layer
+    pub weights: Array2<f32>,
+    pub bias: Array1<f32>,
     pub activation: ActivationType,
 }
 
@@ -32,20 +25,22 @@ impl Layer {
         inputs: usize, 
         neurons: usize, 
         activation: ActivationType, 
-        weight_init: WeightInitStrategy
     ) -> Self {
-        let mut layer = Layer {
+        // Assume He normalization
+        let std_dev = (2.0 / inputs as f32).sqrt();
+        let normal_dist = Normal::new(0.0, std_dev).unwrap();
+
+        // TODO replace deprecated function thread_rng
+        let weights: Array2<f32> = Array2::from_shape_fn((784, 128), |_| normal_dist.sample(&mut rand::thread_rng()));
+        let bias: Array1<f32> = Array1::zeros(128);
+
+        Layer {
             neurons,
             inputs,
-            weights: vec![0.0; inputs * neurons],
-            biases: vec![0.0; neurons],
+            weights,
+            bias,
             activation,
-        };
-        
-        // Initialize weights based on the specified strategy
-        layer.initialize_weights(weight_init);
-        
-        layer
+        }
     }
     
     /// Forward propagation through the layer
@@ -57,92 +52,57 @@ impl Layer {
     /// # Returns
     ///
     /// Transformed output vector after applying weights, biases, and activation
-    pub fn forward_propagate(&self, input: &Vec<f64>) -> Vec<f64> {
-        // Validate input size
+    pub fn forward_propagate(&self, input: &Array1<f32>) -> Array1<f32> {
         assert_eq!(input.len(), self.inputs, "Input size does not match layer's input size");
 
-        // Compute output for each neuron
-        let mut output = vec![0.0; self.neurons];
-        
-        for neuron in 0..self.neurons {
-            // Compute weighted sum for this neuron
-            let mut neuron_output = 0.0;
-            
-            // Dot product of inputs and weights for this neuron
-            for input_idx in 0..self.inputs {
-                let weight_idx = neuron * self.inputs + input_idx;
-                neuron_output += input[input_idx] * self.weights[weight_idx] as f64;
-            }
-            
-            // Add bias
-            neuron_output += self.biases[neuron] as f64;
-            
-            // Store the raw output
-            output[neuron] = neuron_output;
-        }
-        
-        // Apply activation function
+        let output = input.dot(&self.weights) + &self.bias;
+
         match self.activation {
             ActivationType::Softmax => {
-                // Softmax requires processing the entire vector
-                let max_val = output.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-                let exp_values: Vec<f64> = output.iter()
-                    .map(|&x| (x - max_val).exp())
-                    .collect();
-                let sum_exp = exp_values.iter().sum::<f64>();
-                
-                exp_values.iter()
-                    .map(|&x| x / sum_exp)
-                    .collect()
+                let sum_of_exponentials = output.mapv(f32::exp).sum();
+                output.mapv(|x| x.exp() / sum_of_exponentials)
             },
-            ActivationType::ReLU => output.iter().map(|&x| x.max(0.0)).collect(),
-            ActivationType::Sigmoid => output.iter().map(|&x| 1.0 / (1.0 + (-x).exp())).collect(),
-            ActivationType::Tanh => output.iter().map(|&x| x.tanh()).collect(),
-            ActivationType::Linear => output,
+            ActivationType::ReLU => output.mapv(|x| x.max(0.0)),
+            ActivationType::Sigmoid => output.mapv(|x| 1.0 / (1.0 + (-x).exp())),
+            ActivationType::Tanh => output.mapv(|x| x.tanh()),
         }
     }
     
-    /// Initialize weights using a specific strategy
-    pub fn initialize_weights(&mut self, strategy: WeightInitStrategy) {
-        match strategy {
-            WeightInitStrategy::Random => {
-                // Random initialization between -1 and 1
-                self.weights = (0..self.weights.len())
-                    .map(|_| fastrand::f32() * 2.0 - 1.0)
-                    .collect();
-                
-                self.biases = (0..self.biases.len())
-                    .map(|_| fastrand::f32() * 2.0 - 1.0)
-                    .collect();
-            },
-            WeightInitStrategy::Xavier => {
-                // Xavier/Glorot initialization
-                let scale = (6.0 / (self.inputs as f32 + self.neurons as f32)).sqrt();
-                
-                self.weights = (0..self.weights.len())
-                    .map(|_| (fastrand::f32() * 2.0 - 1.0) * scale)
-                    .collect();
-                
-                self.biases = vec![0.0; self.neurons]; // Biases typically initialized to zero
-            },
-            WeightInitStrategy::HeNormal => {
-                // He initialization for ReLU networks
-                let std_dev = (2.0 / self.inputs as f32).sqrt();
-                
-                self.weights = (0..self.weights.len())
-                    .map(|_| fastrand::f32() * std_dev)
-                    .collect();
-                
-                self.biases = vec![0.0; self.neurons];
-            },
-        }
-    }
-    
-    /// Get the total number of parameters in this layer
-    pub fn parameter_count(&self) -> usize {
-        // Weights + Biases
-        self.weights.len() + self.biases.len()
-    }
+    // TODO implement with ndarray
+    //pub fn initialize_weights(&mut self, strategy: WeightInitStrategy) {
+    //    match strategy {
+    //        WeightInitStrategy::Random => {
+    //            // Random initialization between -1 and 1
+    //            self.weights = (0..self.weights.len())
+    //                .map(|_| fastrand::f32() * 2.0 - 1.0)
+    //                .collect();
+    //            
+    //            self.biases = (0..self.biases.len())
+    //                .map(|_| fastrand::f32() * 2.0 - 1.0)
+    //                .collect();
+    //        },
+    //        WeightInitStrategy::Xavier => {
+    //            // Xavier/Glorot initialization
+    //            let scale = (6.0 / (self.inputs as f32 + self.neurons as f32)).sqrt();
+    //            
+    //            self.weights = (0..self.weights.len())
+    //                .map(|_| (fastrand::f32() * 2.0 - 1.0) * scale)
+    //                .collect();
+    //            
+    //            self.biases = vec![0.0; self.neurons]; // Biases typically initialized to zero
+    //        },
+    //        WeightInitStrategy::HeNormal => {
+    //            // He initialization for ReLU networks
+    //            let std_dev = (2.0 / self.inputs as f32).sqrt();
+    //            
+    //            self.weights = (0..self.weights.len())
+    //                .map(|_| fastrand::f32() * std_dev)
+    //                .collect();
+    //            
+    //            self.biases = vec![0.0; self.neurons];
+    //        },
+    //    }
+    //}
 }
 
 /// Weight initialization strategies
