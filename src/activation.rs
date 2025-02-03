@@ -32,10 +32,11 @@ impl ActivationType {
             ActivationType::ReLU => if x > 0.0 { 1.0 } else { 0.0 },
             ActivationType::Tanh => 1.0 - x.tanh().powi(2),
             ActivationType::Softmax => {
-                // TODO fix
-                x.exp()
+                let softmax_output = self.forward(Array1::from_elem(1, x));
+                softmax_output[0] * (1.0 - softmax_output[0])
             }
         }
     }
 
 }
+
