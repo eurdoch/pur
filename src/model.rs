@@ -50,7 +50,7 @@ impl Model {
         let mut current_input = input.clone();
         // TODO why does htis need ot be cloned?
         for layer in self.layers.clone() {
-            current_input = layer.forward_propagate(&current_input);
+            current_input = layer.forward(&current_input);
         }
         current_input
     }

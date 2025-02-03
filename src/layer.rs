@@ -51,20 +51,11 @@ impl Layer {
     /// # Returns
     ///
     /// Transformed output vector after applying weights, biases, and activation
-    pub fn forward_propagate(&self, input: &Array1<f32>) -> Array1<f32> {
+    pub fn forward(&self, input: &Array1<f32>) -> Array1<f32> {
         assert_eq!(input.len(), self.inputs, "Input size does not match layer's input size");
 
         let output = input.dot(&self.weights) + &self.bias;
-
-        match self.activation {
-            ActivationType::Softmax => {
-                let sum_of_exponentials = output.mapv(f32::exp).sum();
-                output.mapv(|x| x.exp() / sum_of_exponentials)
-            },
-            ActivationType::ReLU => output.mapv(|x| x.max(0.0)),
-            ActivationType::Sigmoid => output.mapv(|x| 1.0 / (1.0 + (-x).exp())),
-            ActivationType::Tanh => output.mapv(|x| x.tanh()),
-        }
+        self.activation.forward(output)
     }
     
     // TODO implement with ndarray
