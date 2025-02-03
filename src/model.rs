@@ -1,3 +1,5 @@
+use ndarray::Array1;
+
 use crate::layer::Layer;
 use crate::activation::ActivationType;
 
@@ -6,10 +8,10 @@ pub struct Model {
     pub layers: Vec<Layer>,
 }
 
-struct LayerConfig {
-    neurons: usize,
-    inputs: usize,
-    activation: ActivationType,
+pub struct LayerConfig {
+    pub neurons: usize,
+    pub inputs: usize,
+    pub activation: ActivationType,
 }
 
 impl Model {
@@ -39,6 +41,18 @@ impl Model {
         Model {
             layers,
         }
+    }
+
+    pub fn forward(
+        &self,
+        input: &Array1<f32>,
+    ) -> Array1<f32> {
+        let mut current_input = input.clone();
+        // TODO why does htis need ot be cloned?
+        for layer in self.layers.clone() {
+            current_input = layer.forward_propagate(&current_input);
+        }
+        current_input
     }
     
     ///// Train the model using mini-batch gradient descent

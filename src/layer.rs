@@ -20,7 +20,6 @@ impl Layer {
     /// * `inputs` - Number of inputs to this layer
     /// * `neurons` - Number of neurons in this layer
     /// * `activation` - Activation function type for the layer
-    /// * `weight_init` - Weight initialization strategy
     pub fn new(
         inputs: usize, 
         neurons: usize, 
@@ -31,8 +30,8 @@ impl Layer {
         let normal_dist = Normal::new(0.0, std_dev).unwrap();
 
         // TODO replace deprecated function thread_rng
-        let weights: Array2<f32> = Array2::from_shape_fn((784, 128), |_| normal_dist.sample(&mut rand::thread_rng()));
-        let bias: Array1<f32> = Array1::zeros(128);
+        let weights: Array2<f32> = Array2::from_shape_fn((inputs, neurons), |_| normal_dist.sample(&mut rand::rng()));
+        let bias: Array1<f32> = Array1::zeros(neurons);
 
         Layer {
             neurons,
@@ -103,17 +102,4 @@ impl Layer {
     //        },
     //    }
     //}
-}
-
-/// Weight initialization strategies
-#[derive(Debug, Clone, Copy)]
-pub enum WeightInitStrategy {
-    /// Uniform random initialization between -1 and 1
-    Random,
-    
-    /// Xavier/Glorot initialization
-    Xavier,
-    
-    /// He initialization (good for ReLU networks)
-    HeNormal,
 }
