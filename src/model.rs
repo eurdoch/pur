@@ -2,12 +2,14 @@ use ndarray::{Array1, Array2};
 
 use crate::layer::Layer;
 use crate::activation::ActivationType;
+use crate::optimizer::Optimizer;
 use crate::Loss;
 
 #[derive(Debug, Clone)]
 pub struct Model {
     pub layers: Vec<Layer>,
     pub loss: Loss,
+    optimizer: Optimizer,
 }
 
 pub struct LayerConfig {
@@ -25,6 +27,7 @@ impl Model {
     pub fn new(
         layer_configs: Vec<LayerConfig>, 
         loss: Loss,
+        optimizer: Optimizer,
     ) -> Self {
         if layer_configs.len() < 2 {
             panic!("At least two layers (input and output) are required");
@@ -43,7 +46,8 @@ impl Model {
         
         Model {
             layers,
-            loss
+            loss,
+            optimizer
         }
     }
 
@@ -146,10 +150,12 @@ impl Model {
         }
     }
 
-    pub fn update_parameters(&mut self) {
+    pub fn update_parameters(
+        &mut self,
+    ) {
         for layer in &mut self.layers {
-            layer.weights = &layer.weights - 0.001 * &layer.weight_grads;
-            layer.bias = &layer.bias - 0.001 * &layer.bias_grads;
+            layer.weights = &layer.weights - self.optimizer.learning_rate * &layer.weight_grads;
+            layer.bias = &layer.bias - self.optimizer.learning_rate * &layer.bias_grads;
         }
     }
 
