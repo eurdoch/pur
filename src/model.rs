@@ -138,7 +138,7 @@ impl Model {
                 let images_view = inputs.iter().map(|v| Array1::from_vec(v.to_vec())).collect::<Vec<_>>();
                 let labels_view = labels.iter().map(|v| Array1::from_vec(v.to_vec())).collect::<Vec<_>>();
 
-                let loss = self.train_batch(images_view, labels_view, 32);
+                let loss = self.train_batch(images_view, labels_view, batch_size);
                 if chunk_idx % 100 == 0 {
                     println!("Batch {} / {}, Loss: {}", chunk_idx, chunks_length, loss);
                 }
