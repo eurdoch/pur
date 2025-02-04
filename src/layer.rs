@@ -2,7 +2,6 @@ use crate::activation::ActivationType;
 use ndarray::{Array1, Array2};
 use rand_distr::{Normal, Distribution};
 
-/// Represents a layer in the neural network
 #[derive(Debug, Clone)]
 pub struct Layer {
     pub neurons: usize,
@@ -10,6 +9,10 @@ pub struct Layer {
     pub weights: Array2<f32>,
     pub bias: Array1<f32>,
     pub activation: ActivationType,
+    pub weight_grads: Array2<f32>,
+    pub bias_grads: Array1<f32>,
+    pub activation_cache: Array1<f32>,
+    pub preactivation_cache: Array1<f32>,
 }
 
 impl Layer {
@@ -29,9 +32,12 @@ impl Layer {
         let std_dev = (2.0 / inputs as f32).sqrt();
         let normal_dist = Normal::new(0.0, std_dev).unwrap();
 
-        // TODO replace deprecated function thread_rng
         let weights: Array2<f32> = Array2::from_shape_fn((inputs, neurons), |_| normal_dist.sample(&mut rand::rng()));
         let bias: Array1<f32> = Array1::zeros(neurons);
+        let weight_grads: Array2<f32> = Array2::zeros((inputs, neurons));
+        let bias_grads: Array1<f32> = Array1::zeros(neurons);
+        let activation_cache: Array1<f32> = Array1::zeros(neurons);
+        let preactivation_cache: Array1<f32> = Array1::zeros(neurons);
 
         Layer {
             neurons,
@@ -39,6 +45,10 @@ impl Layer {
             weights,
             bias,
             activation,
+            weight_grads,
+            bias_grads,
+            activation_cache,
+            preactivation_cache,
         }
     }
     
@@ -51,46 +61,13 @@ impl Layer {
     /// # Returns
     ///
     /// Transformed output vector after applying weights, biases, and activation
-    pub fn forward(&self, input: &Array1<f32>) -> Array1<f32> {
+    pub fn forward(&mut self, input: &Array1<f32>) -> Array1<f32> {
         assert_eq!(input.len(), self.inputs, "Input size does not match layer's input size");
 
         let output = input.dot(&self.weights) + &self.bias;
-        self.activation.forward(output)
+        self.preactivation_cache = output.clone();
+        let activated_output = self.activation.forward(output);
+        self.activation_cache = activated_output.clone();
+        activated_output
     }
-    
-    // TODO implement with ndarray
-    //pub fn initialize_weights(&mut self, strategy: WeightInitStrategy) {
-    //    match strategy {
-    //        WeightInitStrategy::Random => {
-    //            // Random initialization between -1 and 1
-    //            self.weights = (0..self.weights.len())
-    //                .map(|_| fastrand::f32() * 2.0 - 1.0)
-    //                .collect();
-    //            
-    //            self.biases = (0..self.biases.len())
-    //                .map(|_| fastrand::f32() * 2.0 - 1.0)
-    //                .collect();
-    //        },
-    //        WeightInitStrategy::Xavier => {
-    //            // Xavier/Glorot initialization
-    //            let scale = (6.0 / (self.inputs as f32 + self.neurons as f32)).sqrt();
-    //            
-    //            self.weights = (0..self.weights.len())
-    //                .map(|_| (fastrand::f32() * 2.0 - 1.0) * scale)
-    //                .collect();
-    //            
-    //            self.biases = vec![0.0; self.neurons]; // Biases typically initialized to zero
-    //        },
-    //        WeightInitStrategy::HeNormal => {
-    //            // He initialization for ReLU networks
-    //            let std_dev = (2.0 / self.inputs as f32).sqrt();
-    //            
-    //            self.weights = (0..self.weights.len())
-    //                .map(|_| fastrand::f32() * std_dev)
-    //                .collect();
-    //            
-    //            self.biases = vec![0.0; self.neurons];
-    //        },
-    //    }
-    //}
 }
