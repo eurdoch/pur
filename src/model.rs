@@ -2,10 +2,12 @@ use ndarray::{Array1, Array2};
 
 use crate::layer::Layer;
 use crate::activation::ActivationType;
+use crate::Loss;
 
 #[derive(Debug, Clone)]
 pub struct Model {
     pub layers: Vec<Layer>,
+    pub loss: Loss,
 }
 
 pub struct LayerConfig {
@@ -22,6 +24,7 @@ impl Model {
     /// * `layer_configs` - A vector of tuples specifying (inputs, neurons, activation)
     pub fn new(
         layer_configs: Vec<LayerConfig>, 
+        loss: Loss,
     ) -> Self {
         if layer_configs.len() < 2 {
             panic!("At least two layers (input and output) are required");
@@ -40,6 +43,7 @@ impl Model {
         
         Model {
             layers,
+            loss
         }
     }
 
@@ -102,7 +106,7 @@ impl Model {
         let mut total_loss: f32 = 0.0; 
         for (input, target) in inputs.iter().zip(targets.iter()) {
             let output = self.forward(&input);
-            total_loss = total_loss - (target * &output.mapv(f32::ln)).sum();
+            total_loss = total_loss + self.loss.calculate(&output, target);
             self.backward(&input, &output, &target);
         }
 
