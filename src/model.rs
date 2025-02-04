@@ -43,13 +43,13 @@ impl Model {
         }
     }
 
+    // TODO create separate function for inference or pass bool to disable grads
     pub fn forward(
-        &self,
+        &mut self,
         input: &Array1<f32>,
     ) -> Array1<f32> {
         let mut current_input = input.clone();
-        // TODO why does htis need ot be cloned?
-        for mut layer in self.layers.clone() {
+        for layer in &mut self.layers {  // Use &mut reference instead
             current_input = layer.forward(&current_input);
         }
         current_input
@@ -62,8 +62,7 @@ impl Model {
         activations: &Array1<f32>,
         target: &Array1<f32>,
     ) {
-        //let loss = -(target * activations.mapv(f32::log10)).sum();
-        let doutputs: Array1<f32> = -(target / activations);
+        let doutputs: Array1<f32> = activations - target;
 
         let layer_depth = self.layers.len();
         let mut dlayers: Vec<Array1<f32>> = vec![Array1::zeros(0); layer_depth];
@@ -72,8 +71,9 @@ impl Model {
             let layer = &self.layers[i];
 
             if i == layer_depth-1 {
-                let dlayer = &doutputs * &target.mapv(|x| if x > 0.0 { 1.0 } else { 0.0 });
-                dlayers[i] = dlayer;
+                dlayers[i] = doutputs.clone();
+                let op = outer_product(&self.layers[i-1].activation_cache, &doutputs);
+                self.layers[i].weight_grads = &self.layers[i].weight_grads + op;
             } else {
                 let upper_layer = &self.layers[i+1];
                 let dlayer = &upper_layer.weights.dot(&dlayers[i+1]) * 
@@ -81,20 +81,51 @@ impl Model {
                 dlayers[i] = dlayer.clone();
                 self.layers[i].bias_grads = &self.layers[i].bias_grads + dlayer.clone();
                 if i == 0 {
-                    let weight_grads: Array2<f32> = &self.layers[i].weight_grads + outer_product(&dlayer, input);
+                    let weight_grads: Array2<f32> = &self.layers[i].weight_grads + outer_product(&input, &dlayer);
                     self.layers[i].weight_grads = weight_grads;
                 } else {
-                    let weight_grads: Array2<f32> = &self.layers[i].weight_grads + outer_product(&dlayer, &self.layers[i-1].activation_cache);
+                    let op = outer_product(&self.layers[i-1].activation_cache, &dlayer);
+                    let weight_grads: Array2<f32> = &self.layers[i].weight_grads + op;
                     self.layers[i].weight_grads = weight_grads;
                 }
             }
         }
     }
 
+    pub fn train_batch(
+        &mut self,
+        inputs: Vec<Array1<f32>>,
+        targets: Vec<Array1<f32>>,
+        batch_size: usize,
+    ) -> f32 {
+        self.zero_gradients();
+        let mut total_loss: f32 = 0.0; 
+        for (input, target) in inputs.iter().zip(targets.iter()) {
+            let output = self.forward(&input);
+            total_loss = total_loss - (target * &output.mapv(f32::ln)).sum();
+            self.backward(&input, &output, &target);
+        }
+
+        for layer in &mut self.layers {
+            layer.weight_grads = &layer.weight_grads / 32.0;
+            layer.bias_grads = &layer.bias_grads / 32.0;
+        }
+
+        self.update_parameters();
+        total_loss / batch_size as f32
+    }
+
     pub fn update_parameters(&mut self) {
         for layer in &mut self.layers {
-            layer.weights = &layer.weights - 0.01 * &layer.weight_grads;
-            layer.bias = &layer.bias - 0.01 * &layer.bias_grads;
+            layer.weights = &layer.weights - 0.001 * &layer.weight_grads;
+            layer.bias = &layer.bias - 0.001 * &layer.bias_grads;
+        }
+    }
+
+    pub fn zero_gradients(&mut self) {
+        for layer in &mut self.layers {
+            layer.weight_grads.fill(0.0);
+            layer.bias_grads.fill(0.0);
         }
     }
 }
