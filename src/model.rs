@@ -119,6 +119,33 @@ impl Model {
         total_loss / batch_size as f32
     }
 
+    // TODO optimize with ndarray views
+    pub fn train(
+        &mut self,
+        inputs: &[Array1<f32>],
+        targets: &[Array1<f32>],
+        epochs: usize,
+        batch_size: usize,
+    ) {
+        let combined_data: Vec<_> = inputs.iter().cloned().zip(targets.iter().cloned()).collect();
+
+        for i in 0..epochs {
+            println!("Epoch {}", i);
+            let chunks = combined_data.chunks(batch_size);
+            let chunks_length = chunks.len();
+            for (chunk_idx, chunk) in chunks.enumerate() {
+                let (inputs, labels): (Vec<_>, Vec<_>) = chunk.iter().cloned().unzip();
+                let images_view = inputs.iter().map(|v| Array1::from_vec(v.to_vec())).collect::<Vec<_>>();
+                let labels_view = labels.iter().map(|v| Array1::from_vec(v.to_vec())).collect::<Vec<_>>();
+
+                let loss = self.train_batch(images_view, labels_view, 32);
+                if chunk_idx % 100 == 0 {
+                    println!("Batch {} / {}, Loss: {}", chunk_idx, chunks_length, loss);
+                }
+            }
+        }
+    }
+
     pub fn update_parameters(&mut self) {
         for layer in &mut self.layers {
             layer.weights = &layer.weights - 0.001 * &layer.weight_grads;
