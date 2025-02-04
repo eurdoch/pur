@@ -69,7 +69,6 @@ impl Model {
         let mut dlayers: Vec<Array1<f32>> = vec![Array1::zeros(0); layer_depth];
 
         for i in (0..layer_depth).rev() {
-            println!("Current index: {}", &i);
             let layer = &self.layers[i];
 
             if i == layer_depth-1 {
@@ -80,15 +79,22 @@ impl Model {
                 let dlayer = &upper_layer.weights.dot(&dlayers[i+1]) * 
                     &layer.preactivation_cache.mapv(|x| if x > 0.0 { 1.0 } else { 0.0 });
                 dlayers[i] = dlayer.clone();
-                self.layers[i].bias_grads = dlayer.clone();
+                self.layers[i].bias_grads = &self.layers[i].bias_grads + dlayer.clone();
                 if i == 0 {
-                    let weight_grads: Array2<f32> = outer_product(&dlayer, input);
+                    let weight_grads: Array2<f32> = &self.layers[i].weight_grads + outer_product(&dlayer, input);
                     self.layers[i].weight_grads = weight_grads;
                 } else {
-                    let weight_grads: Array2<f32> = outer_product(&dlayer, &self.layers[i-1].activation_cache);
+                    let weight_grads: Array2<f32> = &self.layers[i].weight_grads + outer_product(&dlayer, &self.layers[i-1].activation_cache);
                     self.layers[i].weight_grads = weight_grads;
                 }
             }
+        }
+    }
+
+    pub fn update_parameters(&mut self) {
+        for layer in &mut self.layers {
+            layer.weights = &layer.weights - 0.01 * &layer.weight_grads;
+            layer.bias = &layer.bias - 0.01 * &layer.bias_grads;
         }
     }
 }
