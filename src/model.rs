@@ -1,13 +1,13 @@
 use ndarray::{Array1, Array2};
 
-use crate::layer::Layer;
 use crate::activation::ActivationType;
 use crate::optimizer::Optimizer;
 use crate::Loss;
+use crate::layers::{FeedForwardLayer, Layer};
 
 #[derive(Debug, Clone)]
 pub struct Model {
-    pub layers: Vec<Layer>,
+    pub layers: Vec<Box<dyn Layer>>,
     pub loss: Loss,
     optimizer: Optimizer,
 }
@@ -35,13 +35,13 @@ impl Model {
 
         let mut layers = Vec::new();
         for config in layer_configs {
-            let layer = Layer::new(
+            let layer = FeedForwardLayer::new(
                 config.inputs,   // Number of input from previous layer  
                 config.neurons,  // Number of neurons in current layer
                 config.activation,
             );
             
-            layers.push(layer);
+            layers.push(Box::new(layer) as Box<dyn Layer>);
         }
         
         Model {
@@ -80,21 +80,19 @@ impl Model {
 
             if i == layer_depth-1 {
                 dlayers[i] = doutputs.clone();
-                let op = outer_product(&self.layers[i-1].activation_cache, &doutputs);
-                self.layers[i].weight_grads = &self.layers[i].weight_grads + op;
+                let op = outer_product(&self.layers[i-1].params().activation_cache, &doutputs);
+                self.layers[i].add_to_weight_grads(op);
             } else {
                 let upper_layer = &self.layers[i+1];
-                let dlayer = &upper_layer.weights.dot(&dlayers[i+1]) * 
-                    &layer.preactivation_cache.mapv(|x| if x > 0.0 { 1.0 } else { 0.0 });
+                let dlayer = &upper_layer.params().weights.dot(&dlayers[i+1]) * 
+                    &layer.params().preactivation_cache.mapv(|x| if x > 0.0 { 1.0 } else { 0.0 });
                 dlayers[i] = dlayer.clone();
-                self.layers[i].bias_grads = &self.layers[i].bias_grads + dlayer.clone();
+                self.layers[i].add_to_bias_grads(dlayer.clone());
                 if i == 0 {
-                    let weight_grads: Array2<f32> = &self.layers[i].weight_grads + outer_product(&input, &dlayer);
-                    self.layers[i].weight_grads = weight_grads;
+                    self.layers[i].add_to_weight_grads(outer_product(&input, &dlayer));
                 } else {
-                    let op = outer_product(&self.layers[i-1].activation_cache, &dlayer);
-                    let weight_grads: Array2<f32> = &self.layers[i].weight_grads + op;
-                    self.layers[i].weight_grads = weight_grads;
+                    let op = outer_product(&self.layers[i-1].params().activation_cache, &dlayer);
+                    self.layers[i].add_to_weight_grads(op);
                 }
             }
         }
@@ -107,6 +105,7 @@ impl Model {
         batch_size: usize,
     ) -> f32 {
         self.zero_gradients();
+
         let mut total_loss: f32 = 0.0; 
         for (input, target) in inputs.iter().zip(targets.iter()) {
             let output = self.forward(&input);
@@ -115,8 +114,8 @@ impl Model {
         }
 
         for layer in &mut self.layers {
-            layer.weight_grads = &layer.weight_grads / 32.0;
-            layer.bias_grads = &layer.bias_grads / 32.0;
+            layer.set_weight_grads(&layer.params().weight_grads / batch_size as f32);
+            layer.set_bias_grads(&layer.params().bias_grads / batch_size as f32);
         }
 
         self.update_parameters();
@@ -154,15 +153,15 @@ impl Model {
         &mut self,
     ) {
         for layer in &mut self.layers {
-            layer.weights = &layer.weights - self.optimizer.learning_rate * &layer.weight_grads;
-            layer.bias = &layer.bias - self.optimizer.learning_rate * &layer.bias_grads;
+            layer.params_mut().weights = &layer.params().weights - self.optimizer.learning_rate * &layer.params().weight_grads;
+            layer.params_mut().bias = &layer.params().bias - self.optimizer.learning_rate * &layer.params().bias_grads;
         }
     }
 
     pub fn zero_gradients(&mut self) {
         for layer in &mut self.layers {
-            layer.weight_grads.fill(0.0);
-            layer.bias_grads.fill(0.0);
+            layer.params_mut().weight_grads.fill(0.0);
+            layer.params_mut().bias_grads.fill(0.0);
         }
     }
 }
