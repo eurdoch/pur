@@ -1,6 +1,7 @@
 use ndarray::{Array1, Array2, Array4};
 use crate::activation::ActivationType;
 use super::{Layer, LayerParams};
+use rand_distr::{Normal, Distribution};
 
 #[derive(Debug)]
 pub struct Conv2DLayer {
@@ -27,8 +28,16 @@ impl Conv2DLayer {
         let input_shape = (in_channels, input_height, input_width);
         let total_inputs = in_channels * kernel_size.0 * kernel_size.1;
         
-        // Initialize weights and biases
-        let weights = Array2::zeros((out_channels, total_inputs));
+        // He initialization for ReLU
+        let std_dev = (2.0 / total_inputs as f32).sqrt();
+        let normal_dist = Normal::new(0.0, std_dev).unwrap();
+        
+        // Initialize weights with He initialization
+        let weights = Array2::from_shape_fn(
+            (out_channels, total_inputs),
+            |_| normal_dist.sample(&mut rand::rng())
+        );
+        
         let bias = Array1::zeros(out_channels);
         
         let params = LayerParams {
