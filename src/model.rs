@@ -186,7 +186,7 @@ impl Model {
                 batch_count += 1;
                 
                 // Print progress every 100 batches
-                if batch_count % 10 == 0 {
+                if batch_count % 100 == 0 {
                     println!(
                         "Batch {} / {}, Average Loss: {:.4}", 
                         batch_count, 
