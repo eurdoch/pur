@@ -3,7 +3,7 @@ use ndarray::{Array1, Array2};
 use crate::activation::ActivationType;
 use crate::optimizer::Optimizer;
 use crate::Loss;
-use crate::layers::{FeedForwardLayer, Layer};
+use crate::layers::{Conv2DLayer, FeedForwardLayer, Layer};
 
 #[derive(Debug, Clone)]
 pub struct Model {
@@ -12,7 +12,13 @@ pub struct Model {
     optimizer: Optimizer,
 }
 
+pub enum LayerType {
+    FeedForward,
+    Conv2D,
+}
+
 pub struct LayerConfig {
+    pub layer_type: LayerType,
     pub neurons: usize,
     pub inputs: usize,
     pub activation: ActivationType,
@@ -35,13 +41,25 @@ impl Model {
 
         let mut layers = Vec::new();
         for config in layer_configs {
-            let layer = FeedForwardLayer::new(
-                config.inputs,   // Number of input from previous layer  
-                config.neurons,  // Number of neurons in current layer
-                config.activation,
-            );
-            
-            layers.push(Box::new(layer) as Box<dyn Layer>);
+            match config.layer_type {
+                LayerType::FeedForward => {
+                    layers.push(Box::new(FeedForwardLayer::new(
+                        config.inputs,   // Number of input from previous layer  
+                        config.neurons,  // Number of neurons in current layer
+                        config.activation,
+                    )) as Box<dyn Layer>);
+                },
+                LayerType::Conv2D => {
+                    layers.push(Box::new(Conv2DLayer::new(
+                        (28, 28, 1),
+                        (3,3),
+                        32,
+                        (1, 1),
+                        (0, 0),
+                        config.activation,
+                    )) as Box<dyn Layer>);
+                }
+            }
         }
         
         Model {

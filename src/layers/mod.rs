@@ -1,4 +1,5 @@
 pub mod feed_forward;
+pub mod conv2d;
 
 use std::fmt::Debug;
 use ndarray::{Array1, Array2};
@@ -36,3 +37,4 @@ impl Clone for Box<dyn Layer> {
 }
 
 pub use feed_forward::FeedForwardLayer;
+pub use conv2d::Conv2DLayer;
