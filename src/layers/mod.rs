@@ -19,11 +19,18 @@ pub struct LayerParams {
 }
 
 pub trait Layer: Debug {
-    //fn new(inputs: usize, neurons: usize, activation: ActivationType) -> Self where Self: Sized;
     fn forward(&mut self, input: &Array1<f32>) -> Array1<f32>;
+    fn backward(&mut self, 
+        input: &Array1<f32>,
+        grad_output: &Array1<f32>,
+        prev_layer_cache: Option<&Array1<f32>>
+    ) -> Array1<f32>;
+
     fn clone_box(&self) -> Box<dyn Layer>;
+
     fn params(&self) -> &LayerParams;
     fn params_mut(&mut self) -> &mut LayerParams;
+
     fn set_weight_grads(&mut self, grads: Array2<f32>);
     fn set_bias_grads(&mut self, grads: Array1<f32>);
     fn add_to_weight_grads(&mut self, grads: Array2<f32>);

@@ -1,120 +1,249 @@
+use ndarray::{Array1, Array2, Array4};
 use crate::activation::ActivationType;
-use crate::layers::Layer;
-use ndarray::{Array1, Array2};
-use rand_distr::{Normal, Distribution};
+use super::{Layer, LayerParams};
 
-use super::LayerParams;
-
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Conv2DLayer {
-    pub params: LayerParams,
-    pub kernel_size: (usize, usize),
-    pub stride: (usize, usize),
-    pub padding: (usize, usize),
-    pub input_shape: (usize, usize, usize), // (channels, height, width)
-    pub filters: usize,
+    params: LayerParams,
+    input_shape: (usize, usize, usize), // (channels, height, width)
+    kernel_size: (usize, usize),
+    stride: usize,
+    padding: usize,
+    cached_input: Option<Array4<f32>>,
+    cached_padded_input: Option<Array4<f32>>,
 }
 
 impl Conv2DLayer {
     pub fn new(
-        input_shape: (usize, usize, usize),
+        in_channels: usize,
+        out_channels: usize,
+        input_height: usize,
+        input_width: usize,
         kernel_size: (usize, usize),
-        filters: usize,
-        stride: (usize, usize),
-        padding: (usize, usize),
-        activation: ActivationType
+        stride: usize,
+        padding: usize,
+        activation: ActivationType,
     ) -> Self {
-        let (channels, height, width) = input_shape;
-        let (kernel_h, kernel_w) = kernel_size;
+        let input_shape = (in_channels, input_height, input_width);
+        let total_inputs = in_channels * kernel_size.0 * kernel_size.1;
         
-        // Calculate output dimensions
-        let output_height = ((height + 2 * padding.0 - kernel_h) / stride.0) + 1;
-        let output_width = ((width + 2 * padding.1 - kernel_w) / stride.1) + 1;
-        
-        // Total number of inputs and outputs for parameter initialization
-        let inputs = channels * kernel_h * kernel_w;
-        let neurons = filters * output_height * output_width;
-
-        // Initialize weights using He initialization
-        let std_dev = (2.0 / inputs as f32).sqrt();
-        let normal_dist = Normal::new(0.0, std_dev).unwrap();
-
         // Initialize weights and biases
-        let weights: Array2<f32> = Array2::from_shape_fn((inputs, filters), |_| normal_dist.sample(&mut rand::rng()));
-        let bias: Array1<f32> = Array1::zeros(filters);
-        let weight_grads: Array2<f32> = Array2::zeros((inputs, filters));
-        let bias_grads: Array1<f32> = Array1::zeros(filters);
-        let activation_cache: Array1<f32> = Array1::zeros(neurons);
-        let preactivation_cache: Array1<f32> = Array1::zeros(neurons);
-
+        let weights = Array2::zeros((out_channels, total_inputs));
+        let bias = Array1::zeros(out_channels);
+        
         let params = LayerParams {
-            neurons,
-            inputs,
+            neurons: out_channels,
+            inputs: total_inputs,
             weights,
             bias,
             activation,
-            weight_grads,
-            bias_grads,
-            activation_cache,
-            preactivation_cache,
+            weight_grads: Array2::zeros((out_channels, total_inputs)),
+            bias_grads: Array1::zeros(out_channels),
+            activation_cache: Array1::zeros(out_channels),
+            preactivation_cache: Array1::zeros(out_channels),
         };
 
         Conv2DLayer {
             params,
+            input_shape,
             kernel_size,
             stride,
             padding,
-            input_shape,
-            filters,
+            cached_input: None,
+            cached_padded_input: None,
         }
     }
 
-    fn im2col(&self, input: &Array1<f32>) -> Array2<f32> {
-        let (channels, height, width) = self.input_shape;
+    fn weights_to_4d(&self) -> Array4<f32> {
+        let (out_channels, _) = self.params.weights.dim();
+        let (in_channels, kh, kw) = (
+            self.input_shape.0,
+            self.kernel_size.0,
+            self.kernel_size.1
+        );
         
-        // Calculate output dimensions
-        let output_h = ((height + 2 * self.padding.0 - self.kernel_size.0) / self.stride.0) + 1;
-        let output_w = ((width + 2 * self.padding.1 - self.kernel_size.1) / self.stride.1) + 1;
-        
-        // Initialize output matrix
-        let cols = Array2::zeros((
-            channels * self.kernel_size.0 * self.kernel_size.1,
-            output_h * output_w
-        ));
+        let mut weights_4d = Array4::zeros((out_channels, in_channels, kh, kw));
+        for oc in 0..out_channels {
+            for ic in 0..in_channels {
+                for kh_idx in 0..kh {
+                    for kw_idx in 0..kw {
+                        let flat_idx = ic * (kh * kw) + kh_idx * kw + kw_idx;
+                        weights_4d[[oc, ic, kh_idx, kw_idx]] = self.params.weights[[oc, flat_idx]];
+                    }
+                }
+            }
+        }
+        weights_4d
+    }
 
-        // TODO: Implement proper im2col transformation
-        // For now, return a simple reshape that maintains the correct dimensions
-        cols
+    fn input_to_4d(&self, input: &Array1<f32>) -> Array4<f32> {
+        let (c, h, w) = self.input_shape;
+        Array4::from_shape_vec(
+            (1, c, h, w),
+            input.to_vec()
+        ).unwrap()
+    }
+
+    fn output_to_1d(&self, output: &Array4<f32>) -> Array1<f32> {
+        let (_, out_channels, output_height, output_width) = output.dim();
+        let flat_len = out_channels * output_height * output_width;
+        let mut result = Array1::zeros(flat_len);
+        
+        let mut idx = 0;
+        for oc in 0..out_channels {
+            for oh in 0..output_height {
+                for ow in 0..output_width {
+                    result[idx] = output[[0, oc, oh, ow]];
+                    idx += 1;
+                }
+            }
+        }
+        result
     }
 }
 
 impl Layer for Conv2DLayer {
     fn forward(&mut self, input: &Array1<f32>) -> Array1<f32> {
-        assert_eq!(input.len(), self.params.inputs * self.input_shape.0 * self.input_shape.1, 
-            "Input size does not match layer's input size");
+        // Convert input to 4D
+        let input_4d = self.input_to_4d(input);
+        self.cached_input = Some(input_4d.clone());
+        
+        let weights_4d = self.weights_to_4d();
+        let (_, _, input_height, input_width) = input_4d.dim();
+        let (out_channels, _, kernel_height, kernel_width) = weights_4d.dim();
+        
+        // Calculate output dimensions
+        let output_height = ((input_height + 2 * self.padding - kernel_height) / self.stride) + 1;
+        let output_width = ((input_width + 2 * self.padding - kernel_width) / self.stride) + 1;
+        
+        // Initialize output tensor
+        let mut output = Array4::<f32>::zeros((1, out_channels, output_height, output_width));
+        
+        // Apply padding if needed
+        let padded_input = if self.padding > 0 {
+            let mut padded = Array4::<f32>::zeros((
+                1,
+                self.input_shape.0,
+                input_height + 2 * self.padding,
+                input_width + 2 * self.padding,
+            ));
+            
+            let pad = self.padding as i32;
+            padded.slice_mut(ndarray::s![
+                ..,
+                ..,
+                pad..(pad + input_height as i32),
+                pad..(pad + input_width as i32)
+            ]).assign(&input_4d);
+            
+            padded
+        } else {
+            input_4d.clone()
+        };
+        
+        self.cached_padded_input = Some(padded_input.clone());
+        
+        // Perform convolution
+        for oc in 0..out_channels {
+            for oh in 0..output_height {
+                for ow in 0..output_width {
+                    let h_start = oh * self.stride;
+                    let w_start = ow * self.stride;
+                    
+                    let mut sum = 0.0;
+                    for ic in 0..self.input_shape.0 {
+                        for kh in 0..kernel_height {
+                            for kw in 0..kernel_width {
+                                sum += padded_input[[0, ic, h_start + kh, w_start + kw]] 
+                                    * weights_4d[[oc, ic, kh, kw]];
+                            }
+                        }
+                    }
+                    
+                    output[[0, oc, oh, ow]] = sum + self.params.bias[oc];
+                }
+            }
+        }
 
-        // Convert input to columns using im2col
-        let input_cols = self.im2col(input);
+        // Store preactivation values
+        let output_1d = self.output_to_1d(&output);
+        self.params.preactivation_cache = output_1d.clone();
         
-        // Perform convolution as matrix multiplication
-        let output_2d = input_cols.dot(&self.params.weights);
+        // Apply activation function
+        self.params.activation_cache = self.params.activation.forward(output_1d);
+        self.params.activation_cache.clone()
+    }
+
+    fn backward(
+        &mut self,
+        _input: &Array1<f32>,
+        grad_output: &Array1<f32>,
+        _prev_layer_cache: Option<&Array1<f32>>,
+    ) -> Array1<f32> {
+        let input_4d = self.cached_input.as_ref().unwrap();
+        let padded_input = self.cached_padded_input.as_ref().unwrap();
+        let weights_4d = self.weights_to_4d();
         
-        // Reshape output to match the expected dimensions
-        let mut output = Array1::zeros(self.params.neurons);
-        output.assign(&output_2d.to_shape(self.params.neurons).unwrap());
+        // Convert grad_output to 4D
+        let (_, _, input_height, input_width) = input_4d.dim();
+        let (out_channels, in_channels, kernel_height, kernel_width) = weights_4d.dim();
+        let output_height = ((input_height + 2 * self.padding - kernel_height) / self.stride) + 1;
+        let output_width = ((input_width + 2 * self.padding - kernel_width) / self.stride) + 1;
+        let grad_output_4d = Array4::from_shape_vec(
+            (1, out_channels, output_height, output_width),
+            grad_output.to_vec()
+        ).unwrap();
+
+        // Initialize gradients
+        let mut input_gradient = Array4::<f32>::zeros(input_4d.dim());
+        let mut weight_grads = Array2::zeros(self.params.weights.dim());
+        let mut bias_grads = Array1::zeros(self.params.bias.len());
         
-        // Add bias to each feature map
-        for i in 0..self.filters {
-            let start = i * (output.len() / self.filters);
-            let end = (i + 1) * (output.len() / self.filters);
-            let mut slice = output.slice_mut(ndarray::s![start..end]);
-            slice.map_inplace(|x| *x += self.params.bias[i]);
+        // Calculate gradients
+        for oc in 0..out_channels {
+            for oh in 0..output_height {
+                for ow in 0..output_width {
+                    let h_start = oh * self.stride;
+                    let w_start = ow * self.stride;
+                    let output_grad = grad_output_4d[[0, oc, oh, ow]];
+                    
+                    // Update bias gradients
+                    bias_grads[oc] += output_grad;
+                    
+                    // Update weight gradients
+                    for ic in 0..in_channels {
+                        for kh in 0..kernel_height {
+                            for kw in 0..kernel_width {
+                                let input_val = padded_input[[0, ic, h_start + kh, w_start + kw]];
+                                let flat_idx = ic * (kernel_height * kernel_width) + kh * kernel_width + kw;
+                                weight_grads[[oc, flat_idx]] += input_val * output_grad;
+                            }
+                        }
+                    }
+                    
+                    // Update input gradients
+                    for ic in 0..in_channels {
+                        for kh in 0..kernel_height {
+                            for kw in 0..kernel_width {
+                                let flat_idx = ic * (kernel_height * kernel_width) + kh * kernel_width + kw;
+                                let weight = self.params.weights[[oc, flat_idx]];
+                                let h_idx = h_start + kh - self.padding;
+                                let w_idx = w_start + kw - self.padding;
+                                
+                                if h_idx < input_4d.dim().2 && w_idx < input_4d.dim().3 {
+                                    input_gradient[[0, ic, h_idx, w_idx]] += weight * output_grad;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         
-        self.params.preactivation_cache = output.clone();
-        let activated_output = self.params.activation.forward(output);
-        self.params.activation_cache = activated_output.clone();
-        activated_output
+        self.params.weight_grads = weight_grads;
+        self.params.bias_grads = bias_grads;
+        
+        self.output_to_1d(&input_gradient)
     }
 
     fn clone_box(&self) -> Box<dyn Layer> {
@@ -138,10 +267,24 @@ impl Layer for Conv2DLayer {
     }
 
     fn add_to_weight_grads(&mut self, grads: Array2<f32>) {
-        self.params.weight_grads = &self.params.weight_grads + grads;
+        self.params.weight_grads += &grads;
     }
 
     fn add_to_bias_grads(&mut self, grads: Array1<f32>) {
-        self.params.bias_grads = &self.params.bias_grads + grads;
+        self.params.bias_grads += &grads;
+    }
+}
+
+impl Clone for Conv2DLayer {
+    fn clone(&self) -> Self {
+        Conv2DLayer {
+            params: self.params.clone(),
+            input_shape: self.input_shape,
+            kernel_size: self.kernel_size,
+            stride: self.stride,
+            padding: self.padding,
+            cached_input: self.cached_input.clone(),
+            cached_padded_input: self.cached_padded_input.clone(),
+        }
     }
 }

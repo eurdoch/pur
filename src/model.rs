@@ -1,4 +1,4 @@
-use ndarray::{Array1, Array2};
+use ndarray::Array1;
 
 use crate::activation::ActivationType;
 use crate::optimizer::Optimizer;
@@ -14,7 +14,13 @@ pub struct Model {
 
 pub enum LayerType {
     FeedForward,
-    Conv2D,
+    Conv2D {
+        in_channels: usize,
+        out_channels: usize,
+        kernel_size: (usize, usize),
+        stride: usize,
+        padding: usize,
+    }
 }
 
 pub struct LayerConfig {
@@ -44,19 +50,28 @@ impl Model {
             match config.layer_type {
                 LayerType::FeedForward => {
                     layers.push(Box::new(FeedForwardLayer::new(
-                        config.inputs,   // Number of input from previous layer  
-                        config.neurons,  // Number of neurons in current layer
+                        config.inputs,
+                        config.neurons,
                         config.activation,
                     )) as Box<dyn Layer>);
                 },
-                LayerType::Conv2D => {
-                    // TODO fix these hardcoded values
+                LayerType::Conv2D { 
+                    in_channels, 
+                    out_channels, 
+                    kernel_size,
+                    stride,
+                    padding 
+                } => {
+                    // Calculate input dimensions
+                    let side_length = (config.inputs / in_channels).isqrt();
                     layers.push(Box::new(Conv2DLayer::new(
-                        (28, 28, 1),
-                        (3,3),
-                        32,
-                        (1, 1),
-                        (0, 0),
+                        in_channels,
+                        out_channels,
+                        side_length, // height
+                        side_length, // width
+                        kernel_size,
+                        stride,
+                        padding,
                         config.activation,
                     )) as Box<dyn Layer>);
                 }
