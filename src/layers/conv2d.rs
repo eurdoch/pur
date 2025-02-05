@@ -227,11 +227,14 @@ impl Layer for Conv2DLayer {
                             for kw in 0..kernel_width {
                                 let flat_idx = ic * (kernel_height * kernel_width) + kh * kernel_width + kw;
                                 let weight = self.params.weights[[oc, flat_idx]];
-                                let h_idx = h_start + kh - self.padding;
-                                let w_idx = w_start + kw - self.padding;
+                                // Handle padding offset with explicit bounds checking
+                                let h_idx = (h_start as i32) + (kh as i32) - (self.padding as i32);
+                                let w_idx = (w_start as i32) + (kw as i32) - (self.padding as i32);
                                 
-                                if h_idx < input_4d.dim().2 && w_idx < input_4d.dim().3 {
-                                    input_gradient[[0, ic, h_idx, w_idx]] += weight * output_grad;
+                                if h_idx >= 0 && w_idx >= 0 && 
+                                   (h_idx as usize) < input_4d.dim().2 && 
+                                   (w_idx as usize) < input_4d.dim().3 {
+                                    input_gradient[[0, ic, h_idx as usize, w_idx as usize]] += weight * output_grad;
                                 }
                             }
                         }

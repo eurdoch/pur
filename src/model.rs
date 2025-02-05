@@ -1,5 +1,4 @@
 use ndarray::Array1;
-
 use crate::activation::ActivationType;
 use crate::optimizer::Optimizer;
 use crate::Loss;

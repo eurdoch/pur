@@ -1,4 +1,4 @@
-use crate::{activation::ActivationType, utils::outer_product};
+use crate::activation::ActivationType;
 use crate::layers::Layer;
 use ndarray::{Array1, Array2};
 use rand_distr::{Normal, Distribution};
@@ -16,9 +16,10 @@ impl FeedForwardLayer {
         let std_dev = (2.0 / inputs as f32).sqrt();
         let normal_dist = Normal::new(0.0, std_dev).unwrap();
 
-        let weights: Array2<f32> = Array2::from_shape_fn((inputs, neurons), |_| normal_dist.sample(&mut rand::rng()));
+        // Initialize weights as (neurons × inputs) for correct matrix multiplication
+        let weights: Array2<f32> = Array2::from_shape_fn((neurons, inputs), |_| normal_dist.sample(&mut rand::rng()));
         let bias: Array1<f32> = Array1::zeros(neurons);
-        let weight_grads: Array2<f32> = Array2::zeros((inputs, neurons));
+        let weight_grads: Array2<f32> = Array2::zeros((neurons, inputs));
         let bias_grads: Array1<f32> = Array1::zeros(neurons);
         let activation_cache: Array1<f32> = Array1::zeros(neurons);
         let preactivation_cache: Array1<f32> = Array1::zeros(neurons);
@@ -45,7 +46,8 @@ impl Layer for FeedForwardLayer {
     fn forward(&mut self, input: &Array1<f32>) -> Array1<f32> {
         assert_eq!(input.len(), self.params.inputs, "Input size does not match layer's input size");
 
-        let output = input.dot(&self.params.weights) + &self.params.bias;
+        // weights is (neurons × inputs), input is (inputs), result is (neurons)
+        let output = self.params.weights.dot(input) + &self.params.bias;
         self.params.preactivation_cache = output.clone();
         let activated_output = self.params.activation.forward(output);
         self.params.activation_cache = activated_output.clone();
@@ -67,15 +69,19 @@ impl Layer for FeedForwardLayer {
             _ => grad_output * &activation_derivative,
         };
         
-        // Add to bias gradients
+        // Add to bias gradients (dlayer is already correctly shaped as (neurons))
         self.add_to_bias_grads(dlayer.clone());
         
         // Compute weight gradients
-        let activation_input = prev_layer_cache.unwrap_or(input);
-        let weight_grads = outer_product(activation_input, &dlayer);
+        // dlayer is (neurons), input is (inputs), result should be (neurons × inputs)
+        let activation_input = prev_layer_cache.unwrap_or(input).clone();
+        let dlayer_2d = dlayer.clone().insert_axis(ndarray::Axis(1));
+        let input_2d = activation_input.insert_axis(ndarray::Axis(0));
+        let weight_grads = dlayer_2d.dot(&input_2d);
         self.add_to_weight_grads(weight_grads);
         
         // Compute gradient for previous layer
+        // weights is (neurons × inputs), dlayer is (neurons), result should be (inputs)
         self.params.weights.t().dot(&dlayer)
     }
 
@@ -100,10 +106,10 @@ impl Layer for FeedForwardLayer {
     }
 
     fn add_to_weight_grads(&mut self, grads: Array2<f32>) {
-        self.params.weight_grads = &self.params.weight_grads + grads;
+        self.params.weight_grads = &self.params.weight_grads + &grads;
     }
 
     fn add_to_bias_grads(&mut self, grads: Array1<f32>) {
-        self.params.bias_grads = &self.params.bias_grads + grads;
+        self.params.bias_grads = &self.params.bias_grads + &grads;
     }
 }
