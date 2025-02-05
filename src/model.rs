@@ -162,22 +162,45 @@ impl Model {
         epochs: usize,
         batch_size: usize,
     ) {
-        let combined_data: Vec<_> = inputs.iter().cloned().zip(targets.iter().cloned()).collect();
-
-        for i in 0..epochs {
-            println!("Epoch {}", i);
-            let chunks = combined_data.chunks(batch_size);
-            let chunks_length = chunks.len();
-            for (chunk_idx, chunk) in chunks.enumerate() {
-                let (inputs, labels): (Vec<_>, Vec<_>) = chunk.iter().cloned().unzip();
-                let images_view = inputs.iter().map(|v| Array1::from_vec(v.to_vec())).collect::<Vec<_>>();
-                let labels_view = labels.iter().map(|v| Array1::from_vec(v.to_vec())).collect::<Vec<_>>();
-
-                let loss = self.train_batch(images_view, labels_view, batch_size);
-                if chunk_idx % 100 == 0 {
-                    println!("Batch {} / {}, Loss: {}", chunk_idx, chunks_length, loss);
+        let total_samples = inputs.len();
+        
+        for epoch in 0..epochs {
+            println!("Epoch {}", epoch);
+            let mut total_loss = 0.0;
+            let mut batch_count = 0;
+            
+            let mut i = 0;
+            // Process data in batches
+            for batch_start in (0..total_samples).step_by(batch_size) {
+                i = i + 1;
+                let batch_end = (batch_start + batch_size).min(total_samples);
+                let current_batch_size = batch_end - batch_start;
+                
+                // Extract batch
+                let batch_inputs: Vec<Array1<f32>> = inputs[batch_start..batch_end].to_vec();
+                let batch_targets: Vec<Array1<f32>> = targets[batch_start..batch_end].to_vec();
+                
+                // Train on batch
+                let batch_loss = self.train_batch(batch_inputs, batch_targets, current_batch_size);
+                total_loss += batch_loss;
+                batch_count += 1;
+                
+                // Print progress every 100 batches
+                if batch_count % 10 == 0 {
+                    println!(
+                        "Batch {} / {}, Average Loss: {:.4}", 
+                        batch_count, 
+                        (total_samples + batch_size - 1) / batch_size,
+                        total_loss / batch_count as f32
+                    );
                 }
             }
+            
+            println!(
+                "Epoch {} complete. Average loss: {:.4}", 
+                epoch, 
+                total_loss / batch_count as f32
+            );
         }
     }
 
