@@ -50,6 +50,7 @@ impl Model {
                     )) as Box<dyn Layer>);
                 },
                 LayerType::Conv2D => {
+                    // TODO fix these hardcoded values
                     layers.push(Box::new(Conv2DLayer::new(
                         (28, 28, 1),
                         (3,3),
@@ -81,41 +82,6 @@ impl Model {
         current_input
     }
 
-    // TODO optimize this
-    pub fn backward(
-        &mut self,
-        input: &Array1<f32>,
-        activations: &Array1<f32>,
-        target: &Array1<f32>,
-    ) {
-        let doutputs: Array1<f32> = activations - target;
-
-        let layer_depth = self.layers.len();
-        let mut dlayers: Vec<Array1<f32>> = vec![Array1::zeros(0); layer_depth];
-
-        for i in (0..layer_depth).rev() {
-            let layer = &self.layers[i];
-
-            if i == layer_depth-1 {
-                dlayers[i] = doutputs.clone();
-                let op = outer_product(&self.layers[i-1].params().activation_cache, &doutputs);
-                self.layers[i].add_to_weight_grads(op);
-            } else {
-                let upper_layer = &self.layers[i+1];
-                let dlayer = &upper_layer.params().weights.dot(&dlayers[i+1]) * 
-                    &layer.params().preactivation_cache.mapv(|x| if x > 0.0 { 1.0 } else { 0.0 });
-                dlayers[i] = dlayer.clone();
-                self.layers[i].add_to_bias_grads(dlayer.clone());
-                if i == 0 {
-                    self.layers[i].add_to_weight_grads(outer_product(&input, &dlayer));
-                } else {
-                    let op = outer_product(&self.layers[i-1].params().activation_cache, &dlayer);
-                    self.layers[i].add_to_weight_grads(op);
-                }
-            }
-        }
-    }
-
     pub fn train_batch(
         &mut self,
         inputs: Vec<Array1<f32>>,
@@ -123,21 +89,55 @@ impl Model {
         batch_size: usize,
     ) -> f32 {
         self.zero_gradients();
-
-        let mut total_loss: f32 = 0.0; 
+        
+        let mut total_loss: f32 = 0.0;
+        
         for (input, target) in inputs.iter().zip(targets.iter()) {
-            let output = self.forward(&input);
-            total_loss = total_loss + self.loss.calculate(&output, target);
-            self.backward(&input, &output, &target);
+            // Forward pass with caching
+            let mut layer_inputs = vec![input.clone()];
+            let mut current_input = input.clone();
+            
+            for layer in &mut self.layers {
+                current_input = layer.forward(&current_input);
+                layer_inputs.push(current_input.clone());
+            }
+            
+            let output = layer_inputs.last().unwrap();
+            total_loss += self.loss.calculate(output, target);
+            
+            // Initial gradient based on loss function
+            let mut grad_output = match self.loss {
+                Loss::CrossEntropyLoss => {
+                    // For cross-entropy loss with softmax, the gradient is (output - target)
+                    output - target
+                }
+            };
+            
+            // Backward pass
+            for i in (0..self.layers.len()).rev() {
+                let prev_cache = if i > 0 {
+                    Some(&layer_inputs[i])
+                } else {
+                    None
+                };
+                
+                grad_output = self.layers[i].backward(
+                    &layer_inputs[i],
+                    &grad_output,
+                    prev_cache
+                );
+            }
         }
-
+        
+        // Average gradients over batch
+        let batch_size = batch_size as f32;
         for layer in &mut self.layers {
-            layer.set_weight_grads(&layer.params().weight_grads / batch_size as f32);
-            layer.set_bias_grads(&layer.params().bias_grads / batch_size as f32);
+            layer.set_weight_grads(&layer.params().weight_grads / batch_size);
+            layer.set_bias_grads(&layer.params().bias_grads / batch_size);
         }
-
+        
         self.update_parameters();
-        total_loss / batch_size as f32
+        total_loss / batch_size
     }
 
     // TODO optimize with ndarray views
@@ -184,9 +184,4 @@ impl Model {
     }
 }
 
-fn outer_product(dlayer: &Array1<f32>, activation_cache: &Array1<f32>) -> Array2<f32> {
-    let a = dlayer.view().into_shape_with_order((dlayer.len(), 1)).unwrap();
-    let b = activation_cache.view().into_shape_with_order((1, activation_cache.len())).unwrap();
-    
-    a.dot(&b)
-}
+

@@ -1,4 +1,4 @@
-use crate::activation::ActivationType;
+use crate::{activation::ActivationType, utils::outer_product};
 use crate::layers::Layer;
 use ndarray::{Array1, Array2};
 use rand_distr::{Normal, Distribution};
@@ -50,6 +50,33 @@ impl Layer for FeedForwardLayer {
         let activated_output = self.params.activation.forward(output);
         self.params.activation_cache = activated_output.clone();
         activated_output
+    }
+
+    fn backward(&mut self, 
+        input: &Array1<f32>,
+        grad_output: &Array1<f32>,
+        prev_layer_cache: Option<&Array1<f32>>
+    ) -> Array1<f32> {
+        // Get activation derivative with respect to preactivation
+        let activation_derivative = self.params.preactivation_cache
+            .mapv(|x| self.params.activation.derivative(x));
+            
+        // Compute gradient with respect to preactivation
+        let dlayer = match self.params.activation {
+            ActivationType::Softmax => grad_output.clone(), // Special case for softmax
+            _ => grad_output * &activation_derivative,
+        };
+        
+        // Add to bias gradients
+        self.add_to_bias_grads(dlayer.clone());
+        
+        // Compute weight gradients
+        let activation_input = prev_layer_cache.unwrap_or(input);
+        let weight_grads = outer_product(activation_input, &dlayer);
+        self.add_to_weight_grads(weight_grads);
+        
+        // Compute gradient for previous layer
+        self.params.weights.t().dot(&dlayer)
     }
 
     fn clone_box(&self) -> Box<dyn Layer> {
