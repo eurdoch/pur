@@ -1,5 +1,6 @@
 use ndarray::Array1;
 use crate::activation::ActivationType;
+use crate::layers::max_pool::MaxPoolLayer;
 use crate::optimizer::Optimizer;
 use crate::Loss;
 use crate::layers::{Conv2DLayer, FeedForwardLayer, Layer, Regularizer};
@@ -19,6 +20,13 @@ pub enum LayerType {
         kernel_size: (usize, usize),
         stride: usize,
         padding: usize,
+    },
+    MaxPool {
+        in_channels: usize,
+        input_height: usize,
+        input_width: usize,
+        pool_size: (usize, usize),
+        stride: usize,
     }
 }
 
@@ -76,10 +84,25 @@ impl Model {
                         config.activation,
                         config.regularizer,
                     )) as Box<dyn Layer>);
+                },
+                LayerType::MaxPool {
+                    in_channels,
+                    input_height,
+                    input_width,
+                    pool_size,
+                    stride,
+                } => {
+                    layers.push(Box::new(MaxPoolLayer::new(
+                        in_channels,
+                        input_height,
+                        input_width,
+                        pool_size,
+                        stride,
+                    )) as Box<dyn Layer>);
                 }
             }
         }
-        
+                    
         Model {
             layers,
             loss,

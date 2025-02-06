@@ -1,5 +1,6 @@
 pub mod feed_forward;
 pub mod conv2d;
+pub mod max_pool;
 
 use std::fmt::Debug;
 use ndarray::{Array1, Array2};

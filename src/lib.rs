@@ -3,7 +3,6 @@ mod activation;
 mod loss;
 mod optimizer;
 mod layers;
-mod utils;
 
 pub use model::Model;
 pub use model::{LayerConfig, LayerType};

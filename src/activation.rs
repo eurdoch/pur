@@ -7,6 +7,7 @@ pub enum ActivationType {
     ReLU,
     Tanh,
     Softmax,
+    Linear,
 }
 
 impl ActivationType {
@@ -19,6 +20,7 @@ impl ActivationType {
             ActivationType::ReLU => input.mapv(|x| x.max(0.0)),
             ActivationType::Sigmoid => input.mapv(|x| 1.0 / (1.0 + (-x).exp())),
             ActivationType::Tanh => input.mapv(|x| x.tanh()),
+            ActivationType::Linear => input, // Simply return input unchanged
         }
     }
 
@@ -34,9 +36,8 @@ impl ActivationType {
             ActivationType::Softmax => {
                 let softmax_output = self.forward(Array1::from_elem(1, x));
                 softmax_output[0] * (1.0 - softmax_output[0])
-            }
+            },
+            ActivationType::Linear => 1.0,
         }
     }
-
 }
-
