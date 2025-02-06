@@ -73,6 +73,11 @@ pub trait Layer: Debug {
     fn add_to_weight_grads(&mut self, grads: Array2<f32>);
     fn add_to_bias_grads(&mut self, grads: Array1<f32>);
 
+    fn parameter_count(&self) -> usize {
+        let params = self.params();
+        params.weights.len() + params.bias.len()
+    }
+
     fn regularization_loss(&self) -> f32 {
         match self.params().regularizer {
             Some(reg) => reg.compute_loss(&self.params().weights),

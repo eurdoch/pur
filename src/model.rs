@@ -110,6 +110,14 @@ impl Model {
         }
     }
 
+    /// Returns the total number of trainable parameters in the model
+    pub fn parameter_count(&self) -> usize {
+        self.layers
+            .iter()
+            .map(|layer| layer.parameter_count())
+            .sum()
+    }
+
     // TODO create separate function for inference or pass bool to disable grads
     pub fn forward(
         &mut self,
@@ -253,5 +261,3 @@ impl Model {
         }
     }
 }
-
-
