@@ -11,3 +11,4 @@ pub use activation::ActivationType;
 pub use loss::Loss;
 pub use optimizer::Optimizer;
 pub use layers::feed_forward;
+pub use layers::Regularizer;

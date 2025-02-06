@@ -2,7 +2,7 @@ use ndarray::Array1;
 use crate::activation::ActivationType;
 use crate::optimizer::Optimizer;
 use crate::Loss;
-use crate::layers::{Conv2DLayer, FeedForwardLayer, Layer};
+use crate::layers::{Conv2DLayer, FeedForwardLayer, Layer, Regularizer};
 
 #[derive(Debug, Clone)]
 pub struct Model {
@@ -27,6 +27,7 @@ pub struct LayerConfig {
     pub neurons: usize,
     pub inputs: usize,
     pub activation: ActivationType,
+    pub regularizer: Option<Regularizer>, // Added regularizer to config
 }
 
 impl Model {
@@ -52,6 +53,7 @@ impl Model {
                         config.inputs,
                         config.neurons,
                         config.activation,
+                        config.regularizer,
                     )) as Box<dyn Layer>);
                 },
                 LayerType::Conv2D { 
@@ -72,6 +74,7 @@ impl Model {
                         stride,
                         padding,
                         config.activation,
+                        config.regularizer,
                     )) as Box<dyn Layer>);
                 }
             }
@@ -106,6 +109,12 @@ impl Model {
         
         let mut total_loss: f32 = 0.0;
         
+        // Calculate regularization loss from all layers that have regularization enabled
+        let regularization_loss: f32 = self.layers
+            .iter()
+            .map(|layer| layer.regularization_loss())
+            .sum();
+        
         for (input, target) in inputs.iter().zip(targets.iter()) {
             // Forward pass with caching
             let mut layer_inputs = vec![input.clone()];
@@ -122,12 +131,11 @@ impl Model {
             // Initial gradient based on loss function
             let mut grad_output = match self.loss {
                 Loss::CrossEntropyLoss => {
-                    // For cross-entropy loss with softmax, the gradient is (output - target)
                     output - target
                 }
             };
             
-            // Backward pass
+            // Backward pass through each layer
             for i in (0..self.layers.len()).rev() {
                 let prev_cache = if i > 0 {
                     Some(&layer_inputs[i])
@@ -140,10 +148,13 @@ impl Model {
                     &grad_output,
                     prev_cache
                 );
+                
+                // Apply regularization gradients if regularization is enabled for this layer
+                self.layers[i].apply_regularization_gradients();
             }
         }
         
-        // Average gradients over batch
+        // Average gradients over batch size
         let batch_size = batch_size as f32;
         for layer in &mut self.layers {
             layer.set_weight_grads(&layer.params().weight_grads / batch_size);
@@ -151,10 +162,11 @@ impl Model {
         }
         
         self.update_parameters();
-        total_loss / batch_size
+        
+        // Return average loss including regularization
+        (total_loss + regularization_loss) / batch_size
     }
 
-    // TODO optimize with ndarray views
     pub fn train(
         &mut self,
         inputs: &[Array1<f32>],
@@ -169,10 +181,8 @@ impl Model {
             let mut total_loss = 0.0;
             let mut batch_count = 0;
             
-            let mut i = 0;
             // Process data in batches
             for batch_start in (0..total_samples).step_by(batch_size) {
-                i = i + 1;
                 let batch_end = (batch_start + batch_size).min(total_samples);
                 let current_batch_size = batch_end - batch_start;
                 
@@ -204,12 +214,12 @@ impl Model {
         }
     }
 
-    pub fn update_parameters(
-        &mut self,
-    ) {
+    pub fn update_parameters(&mut self) {
         for layer in &mut self.layers {
-            layer.params_mut().weights = &layer.params().weights - self.optimizer.learning_rate * &layer.params().weight_grads;
-            layer.params_mut().bias = &layer.params().bias - self.optimizer.learning_rate * &layer.params().bias_grads;
+            layer.params_mut().weights = &layer.params().weights - 
+                self.optimizer.learning_rate * &layer.params().weight_grads;
+            layer.params_mut().bias = &layer.params().bias - 
+                self.optimizer.learning_rate * &layer.params().bias_grads;
         }
     }
 

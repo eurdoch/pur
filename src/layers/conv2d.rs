@@ -1,6 +1,6 @@
 use ndarray::{Array1, Array2, Array4};
 use crate::activation::ActivationType;
-use super::{Layer, LayerParams};
+use super::{Layer, LayerParams, Regularizer};
 use rand_distr::{Normal, Distribution};
 
 #[derive(Debug)]
@@ -24,6 +24,7 @@ impl Conv2DLayer {
         stride: usize,
         padding: usize,
         activation: ActivationType,
+        regularizer: Option<Regularizer>,
     ) -> Self {
         let input_shape = (in_channels, input_height, input_width);
         let total_inputs = in_channels * kernel_size.0 * kernel_size.1;
@@ -46,6 +47,7 @@ impl Conv2DLayer {
             weights,
             bias,
             activation,
+            regularizer,
             weight_grads: Array2::zeros((out_channels, total_inputs)),
             bias_grads: Array1::zeros(out_channels),
             activation_cache: Array1::zeros(out_channels),

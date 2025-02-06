@@ -3,7 +3,7 @@ use crate::layers::Layer;
 use ndarray::{Array1, Array2};
 use rand_distr::{Normal, Distribution};
 
-use super::LayerParams;
+use super::{LayerParams, Regularizer};
 
 #[derive(Debug, Clone)]
 pub struct FeedForwardLayer {
@@ -11,7 +11,12 @@ pub struct FeedForwardLayer {
 }
 
 impl FeedForwardLayer {
-    pub fn new(inputs: usize, neurons: usize, activation: ActivationType) -> Self {
+    pub fn new(
+        inputs: usize, 
+        neurons: usize, 
+        activation: ActivationType,
+        regularizer: Option<Regularizer>,
+    ) -> Self {
         // Assume He normalization
         let std_dev = (2.0 / inputs as f32).sqrt();
         let normal_dist = Normal::new(0.0, std_dev).unwrap();
@@ -30,6 +35,7 @@ impl FeedForwardLayer {
             weights,
             bias,
             activation,
+            regularizer,
             weight_grads,
             bias_grads,
             activation_cache,
