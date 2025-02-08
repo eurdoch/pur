@@ -3,7 +3,7 @@ use crate::activation::ActivationType;
 use crate::layers::max_pool::MaxPoolLayer;
 use crate::optimizer::Optimizer;
 use crate::Loss;
-use crate::layers::{Conv2DLayer, FeedForwardLayer, Layer, Regularizer};
+use crate::layers::{Conv2DLayer, DropoutLayer, FeedForwardLayer, Layer, Regularizer};
 
 #[derive(Debug, Clone)]
 pub struct Model {
@@ -12,6 +12,7 @@ pub struct Model {
     optimizer: Optimizer,
 }
 
+#[derive(Debug)]
 pub enum LayerType {
     FeedForward,
     Conv2D {
@@ -27,15 +28,20 @@ pub enum LayerType {
         input_width: usize,
         pool_size: (usize, usize),
         stride: usize,
+    },
+    Dropout {
+        size: usize,
+        dropout_rate: f32,
     }
 }
 
+#[derive(Debug)]
 pub struct LayerConfig {
     pub layer_type: LayerType,
-    pub neurons: usize,
-    pub inputs: usize,
-    pub activation: ActivationType,
-    pub regularizer: Option<Regularizer>, // Added regularizer to config
+    pub neurons: Option<usize>,       // Optional: needed for FeedForward
+    pub inputs: Option<usize>,        // Optional: needed for FeedForward
+    pub activation: Option<ActivationType>, // Optional: needed for FeedForward and Conv2D
+    pub regularizer: Option<Regularizer>,  // Optional: for regularization
 }
 
 impl Model {
@@ -57,10 +63,14 @@ impl Model {
         for config in layer_configs {
             match config.layer_type {
                 LayerType::FeedForward => {
+                    let neurons = config.neurons.expect("FeedForward layer requires neurons");
+                    let inputs = config.inputs.expect("FeedForward layer requires inputs");
+                    let activation = config.activation.expect("FeedForward layer requires activation");
+                    
                     layers.push(Box::new(FeedForwardLayer::new(
-                        config.inputs,
-                        config.neurons,
-                        config.activation,
+                        inputs,
+                        neurons,
+                        activation,
                         config.regularizer,
                     )) as Box<dyn Layer>);
                 },
@@ -71,8 +81,11 @@ impl Model {
                     stride,
                     padding 
                 } => {
+                    let inputs = config.inputs.expect("Conv2D layer requires inputs");
+                    let activation = config.activation.expect("Conv2D layer requires activation");
+                    
                     // Calculate input dimensions
-                    let side_length = (config.inputs / in_channels).isqrt();
+                    let side_length = (inputs / in_channels).isqrt();
                     layers.push(Box::new(Conv2DLayer::new(
                         in_channels,
                         out_channels,
@@ -81,7 +94,7 @@ impl Model {
                         kernel_size,
                         stride,
                         padding,
-                        config.activation,
+                        activation,
                         config.regularizer,
                     )) as Box<dyn Layer>);
                 },
@@ -98,6 +111,15 @@ impl Model {
                         input_width,
                         pool_size,
                         stride,
+                    )) as Box<dyn Layer>);
+                },
+                LayerType::Dropout {
+                    size,
+                    dropout_rate,
+                } => {
+                    layers.push(Box::new(DropoutLayer::new(
+                        size,
+                        dropout_rate,
                     )) as Box<dyn Layer>);
                 }
             }
@@ -118,13 +140,18 @@ impl Model {
             .sum()
     }
 
+    pub fn set_training(&mut self, is_training: bool) {
+        for layer in &mut self.layers {
+            if let Some(dropout) = layer.as_any_mut().downcast_mut::<DropoutLayer>() {
+                dropout.set_training(is_training);
+            }
+        }
+    }
+
     // TODO create separate function for inference or pass bool to disable grads
-    pub fn forward(
-        &mut self,
-        input: &Array1<f32>,
-    ) -> Array1<f32> {
+    pub fn forward(&mut self, input: &Array1<f32>) -> Array1<f32> {
         let mut current_input = input.clone();
-        for layer in &mut self.layers {  // Use &mut reference instead
+        for layer in &mut self.layers {
             current_input = layer.forward(&current_input);
         }
         current_input

@@ -1,8 +1,11 @@
 pub mod feed_forward;
 pub mod conv2d;
 pub mod max_pool;
+pub mod dropout;
 
-use std::fmt::Debug;
+pub use dropout::DropoutLayer;
+
+use std::{any::Any, fmt::Debug};
 use ndarray::{Array1, Array2};
 use crate::activation::ActivationType;
 
@@ -72,6 +75,7 @@ pub trait Layer: Debug {
     fn set_bias_grads(&mut self, grads: Array1<f32>);
     fn add_to_weight_grads(&mut self, grads: Array2<f32>);
     fn add_to_bias_grads(&mut self, grads: Array1<f32>);
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 
     fn parameter_count(&self) -> usize {
         let params = self.params();

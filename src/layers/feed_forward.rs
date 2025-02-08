@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use crate::activation::ActivationType;
 use crate::layers::Layer;
 use ndarray::{Array1, Array2};
@@ -117,5 +119,9 @@ impl Layer for FeedForwardLayer {
 
     fn add_to_bias_grads(&mut self, grads: Array1<f32>) {
         self.params.bias_grads = &self.params.bias_grads + &grads;
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }

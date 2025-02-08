@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use ndarray::{Array1, Array2, Array4};
 use super::{Layer, LayerParams};
 use crate::activation::ActivationType;
@@ -196,6 +198,10 @@ impl Layer for MaxPoolLayer {
 
     fn add_to_bias_grads(&mut self, grads: Array1<f32>) {
         self.params.bias_grads += &grads;
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
 
