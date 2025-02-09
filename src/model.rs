@@ -50,13 +50,48 @@ impl Model {
     /// # Arguments
     ///
     /// * `layer_configs` - A vector of tuples specifying (inputs, neurons, activation)
-    pub fn new(
+    pub async fn new(
         layer_configs: Vec<LayerConfig>, 
         loss: Loss,
         optimizer: Optimizer,
+        device: &str,
     ) -> Self {
         if layer_configs.len() < 2 {
             panic!("At least two layers (input and output) are required");
+        }
+
+        match device {
+            "gpu" => {
+                let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+                    backends: wgpu::Backends::METAL,
+                    ..Default::default()
+                });
+                
+                // Request an adapter for Metal backend
+                let adapter = instance
+                    .request_adapter(&wgpu::RequestAdapterOptions {
+                        power_preference: wgpu::PowerPreference::HighPerformance,
+                        force_fallback_adapter: false,
+                        compatible_surface: None,
+                    })
+                    .await
+                    .unwrap();
+
+                // Create the device and queue
+                let (device, queue) = adapter
+                    .request_device(
+                        &wgpu::DeviceDescriptor {
+                            label: Some("Convolution Device"),
+                            required_features: wgpu::Features::empty(),
+                            required_limits: wgpu::Limits::downlevel_defaults(),
+                            memory_hints: Default::default(),
+                        },
+                        None,
+                    )
+                    .await
+                    .unwrap();
+            },
+            _ => {}
         }
 
         let mut layers = Vec::new();

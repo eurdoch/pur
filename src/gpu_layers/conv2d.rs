@@ -32,7 +32,10 @@ pub struct ConvParams {
 
 impl Conv2DGPU {
     pub async fn new() -> Self {
-        let instance = wgpu::Instance::default();
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::METAL,
+            ..Default::default()
+        });
         
         // Request an adapter for Metal backend
         let adapter = instance
