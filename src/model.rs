@@ -223,7 +223,6 @@ impl Model {
         let mut total_loss: f32 = 0.0;
         match (&self.device, &self.queue) {
             (Some(device), Some(queue)) => {
-                
                 // Calculate regularization loss
                 let regularization_loss: f32 = self.layers
                     .iter()
@@ -259,15 +258,17 @@ impl Model {
                                 timestamp_writes: None,
                             });
                             compute_pass.set_pipeline(pipeline);
-                            compute_pass.set_bind_group(0, &params.bind_group, &[]);
+                            
+                            // Use appropriate bind group based on layer type
+                            if self.layers[i].as_any_mut().type_id() == TypeId::of::<Conv2DLayer>() {
+                                compute_pass.set_bind_group(0, &params.bind_group, &[]); // Forward bind group
+                            } else {
+                                compute_pass.set_bind_group(0, &params.bind_group, &[]); // Regular bind group
+                            }
 
                             // Calculate dispatch size based on layer type
                             let workgroup_count = match self.layers[i].as_any_mut().type_id() {
-                                t if t == TypeId::of::<FeedForwardLayer>() => {
-                                    (current_input.len() as u32 + 255) / 256
-                                },
                                 t if t == TypeId::of::<Conv2DLayer>() => {
-                                    // Use 8x8x1 workgroups for conv2d
                                     let out_size = params.activation_buffer.size() as u32 / 4;
                                     ((out_size as f32).cbrt().ceil() as u32 + 7) / 8
                                 },
@@ -321,7 +322,7 @@ impl Model {
                     let output = layer_inputs.last().unwrap();
                     total_loss += self.loss.calculate(output, target);
 
-                    // Backward pass
+                    // Initial gradient based on loss function
                     let mut grad_output = match self.loss {
                         Loss::CrossEntropyLoss => output - target
                     };
@@ -333,7 +334,7 @@ impl Model {
 
                         // Write gradients to GPU
                         queue.write_buffer(
-                            &params.activation_buffer,  // Using activation buffer for gradients
+                            &params.activation_buffer,
                             0,
                             bytemuck::cast_slice(grad_output.as_slice().unwrap())
                         );
@@ -350,20 +351,27 @@ impl Model {
                                 timestamp_writes: None,
                             });
                             compute_pass.set_pipeline(pipeline);
-                            compute_pass.set_bind_group(0, &params.bind_group, &[]);
+                            
+                            // Use appropriate bind group based on layer type
+                            if self.layers[i].as_any_mut().type_id() == TypeId::of::<Conv2DLayer>() {
+                                // Use backward bind group for Conv2D layers
+                                compute_pass.set_bind_group(0, params.backward_bind_group.as_ref().unwrap(), &[]);
+                            } else {
+                                compute_pass.set_bind_group(0, &params.bind_group, &[]);
+                            }
 
                             // Calculate dispatch size based on layer type
                             let workgroup_count = match self.layers[i].as_any_mut().type_id() {
                                 t if t == TypeId::of::<Conv2DLayer>() => {
                                     // For Conv2D, we need three separate dispatches
                                     compute_pass.dispatch_workgroups(
-                                        (params.weight_grads_buffer.size() as u32 + 63) / 64, 
-                                        1, 
+                                        (params.weight_grads_buffer.size() as u32 + 63) / 64,
+                                        1,
                                         1
                                     ); // for weights
                                     compute_pass.dispatch_workgroups(
-                                        (params.bias_grads_buffer.size() as u32 + 63) / 64, 
-                                        1, 
+                                        (params.bias_grads_buffer.size() as u32 + 63) / 64,
+                                        1,
                                         1
                                     ); // for biases
                                     (params.weights_buffer.size() as u32 + 255) / 256 // for input gradients
@@ -385,10 +393,10 @@ impl Model {
                         // Submit command buffer
                         queue.submit(Some(encoder.finish()));
 
-                        // Read gradients back to CPU
+                        // Read gradients back
                         let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                             label: Some("Backward Staging Buffer"),
-                            size: params.weights_buffer.size(), // Size of input gradients
+                            size: params.weights_buffer.size(),
                             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
                             mapped_at_creation: false,
                         });
@@ -398,7 +406,7 @@ impl Model {
                             label: Some("Copy Gradients to Staging Encoder"),
                         });
                         encoder.copy_buffer_to_buffer(
-                            &params.weights_buffer,  // Using weights buffer for input gradients
+                            &params.weights_buffer,
                             0,
                             &staging_buffer,
                             0,
@@ -421,9 +429,10 @@ impl Model {
                         staging_buffer.unmap();
 
                         // Read weight and bias gradients if layer has them
-                        if !matches!(self.layers[i].as_any_mut().type_id(), 
-                                     t if t == TypeId::of::<MaxPoolLayer>() || 
-                                         t == TypeId::of::<DropoutLayer>()) {
+                        if !matches!(self.layers[i].as_any_mut().type_id(),
+                            t if t == TypeId::of::<MaxPoolLayer>() ||
+                                t == TypeId::of::<DropoutLayer>())
+                        {
                             // Read weight gradients
                             let weight_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                                 label: Some("Weight Gradients Staging Buffer"),

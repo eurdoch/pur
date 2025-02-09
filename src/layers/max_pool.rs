@@ -350,6 +350,8 @@ impl Layer for MaxPoolLayer {
             dropout_mask_buffer: None,
             dropout_params_buffer: None,
             bind_group_layout,
+            backward_bind_group: None,
+            backward_bind_group_layout: None,
         }
     }
 

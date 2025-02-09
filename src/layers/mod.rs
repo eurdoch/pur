@@ -74,6 +74,8 @@ pub struct GpuLayerParams {
     pub pool_params_buffer: Option<wgpu::Buffer>,
     pub dropout_mask_buffer: Option<wgpu::Buffer>,
     pub dropout_params_buffer: Option<wgpu::Buffer>,
+    pub backward_bind_group: Option<wgpu::BindGroup>,
+    pub backward_bind_group_layout: Option<wgpu::BindGroupLayout>,
 }
 
 pub trait Layer: Debug {
