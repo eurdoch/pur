@@ -1,7 +1,7 @@
 use std::any::Any;
 
 use ndarray::{Array1, Array2, Array4};
-use super::{Layer, LayerParams};
+use super::{GpuLayerParams, Layer, LayerParams};
 use crate::activation::ActivationType;
 
 #[derive(Debug)]
@@ -203,6 +203,251 @@ impl Layer for MaxPoolLayer {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
+
+    fn create_gpu_buffers(&self, device: &wgpu::Device) -> GpuLayerParams {
+        let (in_channels, input_height, input_width) = self.input_shape;
+        let (_, output_height, output_width) = self.output_shape;
+
+        // Create buffer for input feature maps
+        let input_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("MaxPool Input"),
+            size: (in_channels * input_height * input_width * std::mem::size_of::<f32>()) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+
+        // Create buffer for output feature maps
+        let activation_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("MaxPool Output"),
+            size: (in_channels * output_height * output_width * std::mem::size_of::<f32>()) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+
+        // Create buffer for max indices (two u32s per element for h and w indices)
+        let indices_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("MaxPool Indices"),
+            size: (in_channels * output_height * output_width * 2 * std::mem::size_of::<u32>()) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+
+        // Create uniform buffer for pooling parameters
+        let pool_params_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("MaxPool Parameters"),
+            size: std::mem::size_of::<PoolParams>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Create bind group layout
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("MaxPool Bind Group Layout"),
+            entries: &[
+                // input buffer
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // output (activation) buffer
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // indices buffer
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // pooling parameters
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        // Create bind group
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("MaxPool Bind Group"),
+            layout: &bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: input_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: activation_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: indices_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: pool_params_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        GpuLayerParams {
+            weights_buffer: input_buffer,      // Reuse weights_buffer field for input
+            bias_buffer: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("MaxPool Empty Bias"),
+                size: 4,  // Minimum size buffer
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
+            weight_grads_buffer: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("MaxPool Empty Weight Grads"),
+                size: 4,  // Minimum size buffer
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
+            bias_grads_buffer: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("MaxPool Empty Bias Grads"),
+                size: 4,  // Minimum size buffer
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
+            activation_buffer,
+            preactivation_buffer: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("MaxPool Empty Preactivation"),
+                size: 4,  // Minimum size buffer
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
+            bind_group,
+            indices_buffer: Some(indices_buffer),
+            pool_params_buffer: Some(pool_params_buffer),
+            padded_input_buffer: None,
+            conv_params_buffer: None,
+            dropout_mask_buffer: None,
+            dropout_params_buffer: None,
+        }
+    }
+
+    fn update_gpu_buffers(&self, queue: &wgpu::Queue, params: &GpuLayerParams) {
+        if let Some(input) = &self.cached_input {
+            // Write input data to GPU
+            queue.write_buffer(
+                &params.weights_buffer, // Using weights_buffer for input
+                0,
+                bytemuck::cast_slice(input.as_slice().unwrap())
+            );
+        }
+
+        // Write pooling parameters
+        let pool_params = PoolParams {
+            channels: self.input_shape.0 as u32,
+            input_height: self.input_shape.1 as u32,
+            input_width: self.input_shape.2 as u32,
+            pool_height: self.pool_size.0 as u32,
+            pool_width: self.pool_size.1 as u32,
+            stride: self.stride as u32,
+        };
+
+        queue.write_buffer(
+            params.pool_params_buffer.as_ref().unwrap(),
+            0,
+            bytemuck::bytes_of(&pool_params)
+        );
+    }
+
+    fn read_gpu_buffers(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, params: &GpuLayerParams) {
+        // Create staging buffer for reading output
+        let output_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("MaxPool Output Staging Buffer"),
+            size: (self.params.neurons * std::mem::size_of::<f32>()) as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Create staging buffer for reading indices
+        let indices_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("MaxPool Indices Staging Buffer"),
+            size: (self.params.neurons * 2 * std::mem::size_of::<u32>()) as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("MaxPool Read Buffer Encoder"),
+        });
+
+        encoder.copy_buffer_to_buffer(
+            &params.activation_buffer,
+            0,
+            &output_staging_buffer,
+            0,
+            output_staging_buffer.size()
+        );
+
+        encoder.copy_buffer_to_buffer(
+            params.indices_buffer.as_ref().unwrap(),
+            0,
+            &indices_staging_buffer,
+            0,
+            indices_staging_buffer.size()
+        );
+
+        // Submit commands
+        queue.submit(Some(encoder.finish()));
+
+        // Map buffers and read data
+        let output_slice = output_staging_buffer.slice(..).get_mapped_range();
+        let indices_slice = indices_staging_buffer.slice(..).get_mapped_range();
+
+        // Update activation cache
+        self.params.activation_cache.as_slice_mut().unwrap().copy_from_slice(
+            bytemuck::cast_slice(&output_slice)
+        );
+
+        // Update max indices
+        let indices: Vec<(usize, usize)> = indices_slice
+            .chunks(8) // 2 u32s per index pair
+            .map(|chunk| {
+                let indices = bytemuck::cast_slice::<u8, u32>(chunk);
+                (indices[0] as usize, indices[1] as usize)
+            })
+            .collect();
+
+        self.max_indices = Some(Array4::from_shape_vec(
+            (1, self.output_shape.0, self.output_shape.1, self.output_shape.2),
+            indices
+        ).unwrap());
+
+        // Clean up
+        drop(output_slice);
+        drop(indices_slice);
+        output_staging_buffer.unmap();
+        indices_staging_buffer.unmap();
+    }
 }
 
 impl Clone for MaxPoolLayer {
@@ -217,4 +462,15 @@ impl Clone for MaxPoolLayer {
             max_indices: self.max_indices.clone(),
         }
     }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct PoolParams {
+    channels: u32,
+    input_height: u32,
+    input_width: u32,
+    pool_height: u32,
+    pool_width: u32,
+    stride: u32,
 }

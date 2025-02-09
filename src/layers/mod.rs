@@ -58,6 +58,23 @@ pub struct LayerParams {
     pub preactivation_cache: Array1<f32>,
 }
 
+#[derive(Debug)]
+pub struct GpuLayerParams {
+    weights_buffer: wgpu::Buffer,
+    bias_buffer: wgpu::Buffer,
+    weight_grads_buffer: wgpu::Buffer,
+    bias_grads_buffer: wgpu::Buffer,
+    activation_buffer: wgpu::Buffer,
+    preactivation_buffer: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
+    padded_input_buffer: Option<wgpu::Buffer>,
+    conv_params_buffer: Option<wgpu::Buffer>,
+    indices_buffer: Option<wgpu::Buffer>,
+    pool_params_buffer: Option<wgpu::Buffer>,
+    dropout_mask_buffer: Option<wgpu::Buffer>,
+    dropout_params_buffer: Option<wgpu::Buffer>,
+}
+
 pub trait Layer: Debug {
     fn forward(&mut self, input: &Array1<f32>) -> Array1<f32>;
     fn backward(&mut self, 
@@ -95,6 +112,10 @@ pub trait Layer: Debug {
             self.add_to_weight_grads(reg_grads);
         }
     }
+
+    fn create_gpu_buffers(&self, device: &wgpu::Device) -> GpuLayerParams;
+    fn update_gpu_buffers(&self, queue: &wgpu::Queue, params: &GpuLayerParams);
+    fn read_gpu_buffers(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, params: &GpuLayerParams);
 }
 
 impl Clone for Box<dyn Layer> {
