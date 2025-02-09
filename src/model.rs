@@ -3,13 +3,18 @@ use crate::activation::ActivationType;
 use crate::layers::max_pool::MaxPoolLayer;
 use crate::optimizer::Optimizer;
 use crate::Loss;
-use crate::layers::{Conv2DLayer, DropoutLayer, FeedForwardLayer, Layer, Regularizer};
+use crate::layers::{Conv2DLayer, DropoutLayer, FeedForwardLayer, GpuLayerParams, Layer, Regularizer};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Model {
     pub layers: Vec<Box<dyn Layer>>,
     pub loss: Loss,
     optimizer: Optimizer,
+    device: Option<wgpu::Device>,
+    queue: Option<wgpu::Queue>,
+    gpu_layer_params: Option<Vec<GpuLayerParams>>,
+    shader_modules: Option<Vec<wgpu::ShaderModule>>,
+    compute_pipelines: Option<Vec<wgpu::ComputePipeline>>,
 }
 
 #[derive(Debug)]
@@ -54,13 +59,13 @@ impl Model {
         layer_configs: Vec<LayerConfig>, 
         loss: Loss,
         optimizer: Optimizer,
-        device: &str,
+        mode: &str,
     ) -> Self {
         if layer_configs.len() < 2 {
             panic!("At least two layers (input and output) are required");
         }
 
-        match device {
+        let (device, queue) = match mode {
             "gpu" => {
                 let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
                     backends: wgpu::Backends::METAL,
@@ -77,7 +82,6 @@ impl Model {
                     .await
                     .unwrap();
 
-                // Create the device and queue
                 let (device, queue) = adapter
                     .request_device(
                         &wgpu::DeviceDescriptor {
@@ -90,9 +94,11 @@ impl Model {
                     )
                     .await
                     .unwrap();
+
+                (Some(device), Some(queue))
             },
-            _ => {}
-        }
+            _ => (None, None)
+        };
 
         let mut layers = Vec::new();
         for config in layer_configs {
@@ -163,7 +169,7 @@ impl Model {
         Model {
             layers,
             loss,
-            optimizer
+            optimizer,
         }
     }
 
