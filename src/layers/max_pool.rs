@@ -6,13 +6,13 @@ use crate::activation::ActivationType;
 
 #[derive(Debug)]
 pub struct MaxPoolLayer {
-    params: LayerParams,
-    input_shape: (usize, usize, usize),  // (channels, height, width)
-    output_shape: (usize, usize, usize), // Added output shape
-    pool_size: (usize, usize),
-    stride: usize,
-    cached_input: Option<Array4<f32>>,
-    max_indices: Option<Array4<(usize, usize)>>,
+    pub params: LayerParams,
+    pub input_shape: (usize, usize, usize),  // (channels, height, width)
+    pub output_shape: (usize, usize, usize), // Added output shape
+    pub pool_size: (usize, usize),
+    pub stride: usize,
+    pub cached_input: Option<Array4<f32>>,
+    pub max_indices: Option<Array4<(usize, usize)>>,
 }
 
 impl MaxPoolLayer {
