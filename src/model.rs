@@ -13,8 +13,9 @@ pub struct Model {
     device: Option<wgpu::Device>,
     queue: Option<wgpu::Queue>,
     gpu_layer_params: Option<Vec<GpuLayerParams>>,
-    shader_modules: Option<Vec<wgpu::ShaderModule>>,
-    compute_pipelines: Option<Vec<wgpu::ComputePipeline>>,
+    shader_modules: Option<Vec<(wgpu::ShaderModule, wgpu::ShaderModule)>>,
+    forward_pipelines: Option<Vec<wgpu::ComputePipeline>>,
+    backward_pipelines: Option<Vec<wgpu::ComputePipeline>>,
 }
 
 #[derive(Debug)]
@@ -165,12 +166,24 @@ impl Model {
                 }
             }
         }
-                    
-        Model {
+
+        let mut model = Model {
             layers,
             loss,
             optimizer,
+            device,
+            queue,
+            gpu_layer_params: None,
+            shader_modules: None,
+            forward_pipelines: None,
+            backward_pipelines: None,
+        };
+
+        if mode == "gpu" {
+            model.init_gpu_resources();
         }
+
+        model
     }
 
     /// Returns the total number of trainable parameters in the model
@@ -327,5 +340,204 @@ impl Model {
             layer.params_mut().weight_grads.fill(0.0);
             layer.params_mut().bias_grads.fill(0.0);
         }
+    }
+
+    fn init_gpu_resources(&mut self) {
+        let mut gpu_params = Vec::new();
+        let mut shader_modules = Vec::new();
+        let mut forward_pipelines = Vec::new();
+        let mut backward_pipelines = Vec::new();
+
+        for layer in &mut self.layers {
+            // Create GPU buffers
+            let params = layer.create_gpu_buffers(self.device.as_ref().unwrap());
+            
+            // Create shader modules and pipelines based on layer type
+            if let Some(_) = layer.as_any_mut().downcast_ref::<FeedForwardLayer>() {
+                let forward_shader = self.device.as_ref().unwrap()
+                    .create_shader_module(wgpu::ShaderModuleDescriptor {
+                        label: Some("Feed Forward Forward Shader"),
+                        source: wgpu::ShaderSource::Wgsl(include_str!("./shaders/feed_forward_forward.wgsl").into()),
+                    });
+                
+                let backward_shader = self.device.as_ref().unwrap()
+                    .create_shader_module(wgpu::ShaderModuleDescriptor {
+                        label: Some("Feed Forward Backward Shader"),
+                        source: wgpu::ShaderSource::Wgsl(include_str!("./shaders/feed_forward_backward.wgsl").into()),
+                    });
+
+                // Create pipeline layout
+                let pipeline_layout = self.device.as_ref().unwrap()
+                    .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("Feed Forward Pipeline Layout"),
+                        bind_group_layouts: &[&params.bind_group_layout],  // Use stored layout
+                        push_constant_ranges: &[],
+                    });
+
+                // Create compute pipelines
+                let forward_pipeline = self.device.as_ref().unwrap()
+                    .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                        label: Some("Feed Forward Forward Pipeline"),
+                        layout: Some(&pipeline_layout),
+                        module: &forward_shader,
+                        entry_point: Some("forward"),
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                        cache: None,
+                    });
+
+                let backward_pipeline = self.device.as_ref().unwrap()
+                    .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                        label: Some("Feed Forward Backward Pipeline"),
+                        layout: Some(&pipeline_layout),
+                        module: &backward_shader,
+                        entry_point: Some("backward"),
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                        cache: None,
+                    });
+
+                shader_modules.push((forward_shader, backward_shader));
+                forward_pipelines.push(forward_pipeline);
+                backward_pipelines.push(backward_pipeline);
+            } 
+            else if let Some(_) = layer.as_any_mut().downcast_ref::<Conv2DLayer>() {
+                let forward_shader = self.device.as_ref().unwrap()
+                    .create_shader_module(wgpu::ShaderModuleDescriptor {
+                        label: Some("Conv2D Forward Shader"),
+                        source: wgpu::ShaderSource::Wgsl(include_str!("./shaders/conv2d_forward.wgsl").into()),
+                    });
+                
+                let backward_shader = self.device.as_ref().unwrap()
+                    .create_shader_module(wgpu::ShaderModuleDescriptor {
+                        label: Some("Conv2D Backward Shader"),
+                        source: wgpu::ShaderSource::Wgsl(include_str!("./shaders/conv2d_backward.wgsl").into()),
+                    });
+
+                let pipeline_layout = self.device.as_ref().unwrap()
+                    .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("Conv2D Pipeline Layout"),
+                        bind_group_layouts: &[&params.bind_group_layout],  // Use stored layout
+                        push_constant_ranges: &[],
+                    });
+
+                let forward_pipeline = self.device.as_ref().unwrap()
+                    .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                        label: Some("Conv2D Forward Pipeline"),
+                        layout: Some(&pipeline_layout),
+                        module: &forward_shader,
+                        entry_point: Some("forward"),
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                        cache: None,
+                    });
+
+                let backward_pipeline = self.device.as_ref().unwrap()
+                    .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                        label: Some("Conv2D Backward Pipeline"),
+                        layout: Some(&pipeline_layout),
+                        module: &backward_shader,
+                        entry_point: Some("backward_weights"),
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                        cache: None,
+                    });
+
+                shader_modules.push((forward_shader, backward_shader));
+                forward_pipelines.push(forward_pipeline);
+                backward_pipelines.push(backward_pipeline);
+            }
+            else if let Some(_) = layer.as_any_mut().downcast_ref::<MaxPoolLayer>() {
+                let forward_shader = self.device.as_ref().unwrap()
+                    .create_shader_module(wgpu::ShaderModuleDescriptor {
+                        label: Some("MaxPool Forward Shader"),
+                        source: wgpu::ShaderSource::Wgsl(include_str!("./shaders/max_pool_forward.wgsl").into()),
+                    });
+                
+                let backward_shader = self.device.as_ref().unwrap()
+                    .create_shader_module(wgpu::ShaderModuleDescriptor {
+                        label: Some("MaxPool Backward Shader"),
+                        source: wgpu::ShaderSource::Wgsl(include_str!("./shaders/max_pool_backward.wgsl").into()),
+                    });
+
+                let pipeline_layout = self.device.as_ref().unwrap()
+                    .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("MaxPool Pipeline Layout"),
+                        bind_group_layouts: &[&params.bind_group_layout],  // Use stored layout
+                        push_constant_ranges: &[],
+                    });
+
+                let forward_pipeline = self.device.as_ref().unwrap()
+                    .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                        label: Some("MaxPool Forward Pipeline"),
+                        layout: Some(&pipeline_layout),
+                        module: &forward_shader,
+                        entry_point: Some("forward"),
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                        cache: None,
+                    });
+
+                let backward_pipeline = self.device.as_ref().unwrap()
+                    .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                        label: Some("MaxPool Backward Pipeline"),
+                        layout: Some(&pipeline_layout),
+                        module: &backward_shader,
+                        entry_point: Some("backward"),
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                        cache: None,
+                    });
+
+                shader_modules.push((forward_shader, backward_shader));
+                forward_pipelines.push(forward_pipeline);
+                backward_pipelines.push(backward_pipeline);
+            }
+            else if let Some(_) = layer.as_any_mut().downcast_ref::<DropoutLayer>() {
+                let forward_shader = self.device.as_ref().unwrap()
+                    .create_shader_module(wgpu::ShaderModuleDescriptor {
+                        label: Some("Dropout Forward Shader"),
+                        source: wgpu::ShaderSource::Wgsl(include_str!("./shaders/dropout_forward.wgsl").into()),
+                    });
+                
+                let backward_shader = self.device.as_ref().unwrap()
+                    .create_shader_module(wgpu::ShaderModuleDescriptor {
+                        label: Some("Dropout Backward Shader"),
+                        source: wgpu::ShaderSource::Wgsl(include_str!("./shaders/dropout_backward.wgsl").into()),
+                    });
+
+                let pipeline_layout = self.device.as_ref().unwrap()
+                    .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("Dropout Pipeline Layout"),
+                        bind_group_layouts: &[&params.bind_group_layout],  // Use stored layout
+                        push_constant_ranges: &[],
+                    });
+
+                let forward_pipeline = self.device.as_ref().unwrap()
+                    .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                        label: Some("Dropout Forward Pipeline"),
+                        layout: Some(&pipeline_layout),
+                        module: &forward_shader,
+                        entry_point: Some("forward"),
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                        cache: None,
+                    });
+
+                let backward_pipeline = self.device.as_ref().unwrap()
+                    .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                        label: Some("Dropout Backward Pipeline"),
+                        layout: Some(&pipeline_layout),
+                        module: &backward_shader,
+                        entry_point: Some("backward"),
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                        cache: None,
+                    });
+
+                shader_modules.push((forward_shader, backward_shader));
+                forward_pipelines.push(forward_pipeline);
+                backward_pipelines.push(backward_pipeline);
+            }
+
+            gpu_params.push(params);
+        }
+
+        self.gpu_layer_params = Some(gpu_params);
+        self.shader_modules = Some(shader_modules);
+        self.forward_pipelines = Some(forward_pipelines);
+        self.backward_pipelines = Some(backward_pipelines);
     }
 }

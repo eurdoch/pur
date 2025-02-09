@@ -60,19 +60,20 @@ pub struct LayerParams {
 
 #[derive(Debug)]
 pub struct GpuLayerParams {
-    weights_buffer: wgpu::Buffer,
-    bias_buffer: wgpu::Buffer,
-    weight_grads_buffer: wgpu::Buffer,
-    bias_grads_buffer: wgpu::Buffer,
-    activation_buffer: wgpu::Buffer,
-    preactivation_buffer: wgpu::Buffer,
-    bind_group: wgpu::BindGroup,
-    padded_input_buffer: Option<wgpu::Buffer>,
-    conv_params_buffer: Option<wgpu::Buffer>,
-    indices_buffer: Option<wgpu::Buffer>,
-    pool_params_buffer: Option<wgpu::Buffer>,
-    dropout_mask_buffer: Option<wgpu::Buffer>,
-    dropout_params_buffer: Option<wgpu::Buffer>,
+    pub weights_buffer: wgpu::Buffer,
+    pub bias_buffer: wgpu::Buffer,
+    pub weight_grads_buffer: wgpu::Buffer,
+    pub bias_grads_buffer: wgpu::Buffer,
+    pub activation_buffer: wgpu::Buffer,
+    pub preactivation_buffer: wgpu::Buffer,
+    pub bind_group: wgpu::BindGroup,
+    pub bind_group_layout: wgpu::BindGroupLayout,
+    pub padded_input_buffer: Option<wgpu::Buffer>,
+    pub conv_params_buffer: Option<wgpu::Buffer>,
+    pub indices_buffer: Option<wgpu::Buffer>,
+    pub pool_params_buffer: Option<wgpu::Buffer>,
+    pub dropout_mask_buffer: Option<wgpu::Buffer>,
+    pub dropout_params_buffer: Option<wgpu::Buffer>,
 }
 
 pub trait Layer: Debug {

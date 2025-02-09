@@ -229,6 +229,7 @@ impl Layer for DropoutLayer {
             indices_buffer: None,
             padded_input_buffer: None,
             pool_params_buffer: None,
+            bind_group_layout,
         }
     }
 

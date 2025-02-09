@@ -516,6 +516,7 @@ impl Layer for Conv2DLayer {
             pool_params_buffer: None,
             dropout_mask_buffer: None,
             dropout_params_buffer: None,
+            bind_group_layout,
         }
     }
 
