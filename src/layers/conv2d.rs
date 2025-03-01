@@ -367,8 +367,9 @@ impl Layer for Conv2DLayer {
             mapped_at_creation: false,
         });
 
-        let forward_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Conv2D Forward Bind Group Layout"),
+        // Split forward bind groups into two parts
+        let forward_bind_group_layout_1 = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Conv2D Forward Bind Group Layout 1"),
             entries: &[
                 // weights (read-only storage)
                 wgpu::BindGroupLayoutEntry {
@@ -403,9 +404,26 @@ impl Layer for Conv2DLayer {
                     },
                     count: None,
                 },
-                // activations (read-write storage)
+                // conv parameters (uniform)
                 wgpu::BindGroupLayoutEntry {
                     binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let forward_bind_group_layout_2 = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Conv2D Forward Bind Group Layout 2"),
+            entries: &[
+                // activations (read-write storage)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Storage { read_only: false },
@@ -414,16 +432,55 @@ impl Layer for Conv2DLayer {
                     },
                     count: None,
                 },
-                // conv parameters (uniform)
+                // preactivations (read-write storage)
                 wgpu::BindGroupLayoutEntry {
-                    binding: 4,
+                    binding: 1,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
                     count: None,
+                },
+            ],
+        });
+
+        // Create forward bind groups
+        let forward_bind_group_1 = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Conv2D Forward Bind Group 1"),
+            layout: &forward_bind_group_layout_1,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: weights_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: bias_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: padded_input_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: conv_params_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        let forward_bind_group_2 = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Conv2D Forward Bind Group 2"),
+            layout: &forward_bind_group_layout_2,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: activation_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: preactivation_buffer.as_entire_binding(),
                 },
             ],
         });
@@ -478,34 +535,6 @@ impl Layer for Conv2DLayer {
             ],
         });
 
-        // Create bind groups
-        let forward_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Conv2D Forward Bind Group"),
-            layout: &forward_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: weights_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: bias_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: padded_input_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: activation_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: conv_params_buffer.as_entire_binding(),
-                },
-            ],
-        });
-
         let backward_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Conv2D Backward Bind Group"),
             layout: &backward_bind_group_layout,
@@ -520,7 +549,6 @@ impl Layer for Conv2DLayer {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: preactivation_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 3,
@@ -536,14 +564,20 @@ impl Layer for Conv2DLayer {
             bias_grads_buffer,
             activation_buffer,
             preactivation_buffer,
-            bind_group: forward_bind_group,
             padded_input_buffer: Some(padded_input_buffer),
             conv_params_buffer: Some(conv_params_buffer),
             indices_buffer: None,
             pool_params_buffer: None,
             dropout_mask_buffer: None,
             dropout_params_buffer: None,
-            bind_group_layout: forward_bind_group_layout,
+            
+            // Forward pass bind groups and layouts
+            forward_bind_group_1,
+            forward_bind_group_2,
+            forward_bind_group_layout_1,
+            forward_bind_group_layout_2,
+            
+            // Backward pass bind group and layout
             backward_bind_group: Some(backward_bind_group),
             backward_bind_group_layout: Some(backward_bind_group_layout),
         }

@@ -515,14 +515,13 @@ impl Model {
                 }
 
                 // Average gradients over batch size
-                let batch_size = batch_size as f32;
                 for layer in &mut self.layers {
-                    layer.set_weight_grads(&layer.params().weight_grads / batch_size);
-                    layer.set_bias_grads(&layer.params().bias_grads / batch_size);
+                    layer.set_weight_grads(&layer.params().weight_grads / batch_size as f32);
+                    layer.set_bias_grads(&layer.params().bias_grads / batch_size as f32);
                 }
 
                 self.update_parameters();
-                (total_loss + regularization_loss) / batch_size
+                (total_loss + regularization_loss) / batch_size as f32
             },
             _ => {
                 // Calculate regularization loss from all layers that have regularization enabled

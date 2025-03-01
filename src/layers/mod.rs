@@ -66,14 +66,20 @@ pub struct GpuLayerParams {
     pub bias_grads_buffer: wgpu::Buffer,
     pub activation_buffer: wgpu::Buffer,
     pub preactivation_buffer: wgpu::Buffer,
-    pub bind_group: wgpu::BindGroup,
-    pub bind_group_layout: wgpu::BindGroupLayout,
     pub padded_input_buffer: Option<wgpu::Buffer>,
     pub conv_params_buffer: Option<wgpu::Buffer>,
     pub indices_buffer: Option<wgpu::Buffer>,
     pub pool_params_buffer: Option<wgpu::Buffer>,
     pub dropout_mask_buffer: Option<wgpu::Buffer>,
     pub dropout_params_buffer: Option<wgpu::Buffer>,
+    
+    // Forward pass bind groups and layouts
+    pub forward_bind_group_1: wgpu::BindGroup,
+    pub forward_bind_group_2: wgpu::BindGroup,
+    pub forward_bind_group_layout_1: wgpu::BindGroupLayout,
+    pub forward_bind_group_layout_2: wgpu::BindGroupLayout,
+    
+    // Backward pass bind group and layout
     pub backward_bind_group: Option<wgpu::BindGroup>,
     pub backward_bind_group_layout: Option<wgpu::BindGroupLayout>,
 }
